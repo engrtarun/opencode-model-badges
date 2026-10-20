@@ -1,0 +1,32 @@
+{
+  "name": "opencode-model-badges",
+  "version": "0.1.0",
+  "description": "Live ✅ / ✔️[N] running-session badges on model names inside the OpenCode model picker.",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "model-picker",
+    "badges",
+    "session",
+    "sse",
+    "terminal",
+    "ai"
+  ],
+  "author": "engrtarun",
+  "license": "MIT",
+  "homepage": "https://github.com/engrtarun/opencode-model-badges#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/engrtarun/opencode-model-badges.git"
+  },
+  "bugs": {
+    "url": "https://github.com/engrtarun/opencode-model-badges/issues"
+  },
+  "engines": {
+    "opencode": ">=2.0.0"
+  }
+}
