@@ -30,10 +30,9 @@ Thanks for your interest! This is a small, single-file plugin (`index.ts`), so i
 
 ## Running checks
 
-There is no heavy test harness yet — that's actually a great first contribution (see issue #3). For now:
-
-- `npm run lint` is not applicable (no build). Just keep TypeScript strict and run `npx tsc --noEmit` mentally — or open the file in an editor with the OpenCode plugin types.
-- Manual smoke test: open the model picker while 2 sessions run on the same model → expect `✔️ [2]`; stop them → badge disappears within ~15s.
+- `npm test` runs the dependency-free Node built-in test suite for badge suffix handling and running-session counting.
+- `npm run lint` is not applicable (no build). Keep TypeScript strict and, when the OpenCode plugin types are installed, run `npx tsc --noEmit` or inspect the file in an editor.
+- Manual smoke test: open the model picker while two sessions run on the same model; expect the multi-session badge. Stop them and confirm the badge disappears within about 15 seconds.
 
 ## Submitting a PR
 

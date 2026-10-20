@@ -1,6 +1,9 @@
 {
   "name": "opencode-model-badges",
   "version": "0.1.0",
+  "scripts": {
+    "test": "node --test"
+  },
   "description": "Live ✅ / ✔️[N] running-session badges on model names inside the OpenCode model picker.",
   "type": "module",
   "exports": {

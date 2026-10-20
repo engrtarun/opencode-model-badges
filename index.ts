@@ -29,6 +29,7 @@
 // License: MIT
 
 import { Plugin } from "@opencode/plugin"
+import { countRunningModels, pickBadge, stripBadge } from "./lib.ts"
 
 const MAP_REFRESH_DEBOUNCE_MS = 8_000
 const STATUS_DEBOUNCE_MS = 500
@@ -47,13 +48,9 @@ const TOOL_START_RE = /session\.tool\.(called|input\.started|started)$/
 const TOOL_END_RE = /session\.tool\.(success|failed|errored|error|done|finished|closed)$/
 // Safety valve: a tool can't legitimately run forever — drop missed-end tools
 const TOOL_MAX_MS = 10 * 60_000
-const MIN_MULTI = 2
 const RECONNECT_MS = 3_000
 const MAP_REFRESH_INTERVAL_MS = 10 * 60_000
 
-// Strips every badge we may have appended, so names can never accumulate:
-// "X ✔️ [3] ✅ ✔️ [4]" is impossible.
-const SUFFIX_RE = /(?:\s+(?:✅(?:\s*\d+x)?|⭐|✔️\s*\[\d+\]))+\s*$/u
 
 let debugPath = ""
 
@@ -92,30 +89,17 @@ export default Plugin.define({
     let runningCount = new Map<string, number>()
 
     const recomputeRunning = () => {
-      const next = new Map<string, number>()
-      const bump = (k: string | undefined) => {
-        if (!k) return
-        next.set(k, (next.get(k) ?? 0) + 1)
-      }
-      for (const id of statusBusy) bump(sessionModels.get(id))
-      // Fallback: fresh generation events OR an open (long-running) tool call
-      const now = Date.now()
-      for (const [id, ts] of lastActivity) {
-        if (statusKnown.has(id)) continue // authoritative status exists — trust only it
-        const open = toolBusy.get(id)
-        const oldest = open && open.size > 0 ? Math.min(...open.values()) : Infinity
-        const toolOpen = open !== undefined && open.size > 0 && now - oldest < TOOL_MAX_MS
-        if (!toolOpen && now - ts > ACTIVITY_TTL_MS) continue
-        bump(sessionModels.get(id))
-      }
-      // Sessions whose ONLY signal is an open tool (no activity entry yet)
-      for (const [id, open] of toolBusy) {
-        if (open.size === 0) continue
-        if (lastActivity.has(id) || statusKnown.has(id)) continue
-        if (now - Math.min(...open.values()) >= TOOL_MAX_MS) continue
-        bump(sessionModels.get(id))
-      }
-      runningCount = next
+      runningCount = countRunningModels({
+        sessionModels,
+        statusBusy,
+        statusKnown,
+        lastActivity,
+        toolBusy,
+        now: Date.now(),
+        activityTtlMs: ACTIVITY_TTL_MS,
+        toolMaxMs: TOOL_MAX_MS,
+      })
+      dbg(`map: sessions=${sessionModels.size} running=[${[...runningCount].map(([k, n]) => `${k}(${n})`).join(",")}]`)
     }
 
     // ---- session -> model map (in-process, paginated) ----
@@ -149,12 +133,8 @@ export default Plugin.define({
       try {
         for (const model of editor.list()) {
           const key = `${model.providerID}/${model.id}`
-          const base = model.name.replace(SUFFIX_RE, "")
-          const n = runningCount.get(key) ?? 0
-          // 1 running -> green ✅ only; 2+ running -> blue ✔️ [N] only
-          let suffix = ""
-          if (n === 1) suffix += " ✅"
-          else if (n >= MIN_MULTI) suffix += ` ✔️ [${n}]`
+          const base = stripBadge(model.name)
+          const suffix = pickBadge(runningCount.get(key) ?? 0)
           const final = base + suffix
           if (final !== model.name) {
             editor.update(model.providerID, model.id, (draft) => {
