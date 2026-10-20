@@ -7,8 +7,9 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://github.com/engrtarun/opencode-model-badges/releases)
 [![Zero-child-process](https://img.shields.io/badge/child%20processes-0-brightgreen.svg)](#-how-it-works)
 [![SSE](https://img.shields.io/badge/events-SSE%20stream-orange.svg)](#-how-it-works)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-Kya aapke paas bhi ek saath **5 chat sessions** chalte hain — aur aapko pata hi nahi chalta kaun sa model kabhi busy hai aur kaun sa kab se mara pada hai? Yeh plugin har model name ke peeche **live badge** laga deta hai:
+Do you run 5-7 chat sessions at once and lose track of which model is busy and which is idle? This plugin appends a **live badge** to every model name in the picker:
 
 ```
 ┌─ model picker ────────────────────────────────┐
@@ -19,13 +20,13 @@ Kya aapke paas bhi ek saath **5 chat sessions** chalte hain — aur aapko pata h
 └───────────────────────────────────────────────┘
 ```
 
-| Badge | Matlab |
+| Badge | Meaning |
 | :---- | :----- |
-| *(kuch nahi)* | Us model pe koi session **nahi chal raha** |
-| `✅` **green tick** | Exactly **1 chat session** abhi chal raha hai |
-| `✔️ [N]` **blue tick + count** | **N (2+) sessions** ek saath chal rahe hain |
+| *(nothing)* | No session is currently running on that model |
+| `✅` green tick | Exactly **1** chat session is running |
+| `✔️ [N]` blue tick + count | **N (2+)** sessions are running on the same model in parallel |
 
-> **Sirf live sessions count hote hain — history kabhi nahi.** Jo model abhi kaam kar rahi hai wahi badge paati hai.
+> **Only currently running sessions are counted — never history.** A model earns a badge only while it is actively working.
 
 ---
 
@@ -35,8 +36,8 @@ Kya aapke paas bhi ek saath **5 chat sessions** chalte hain — aur aapko pata h
 
 ```powershell
 # Windows
-mkdir "$env:USERPROFILE\.config\opencode\plugins\model-badges" -Force
-copy index.ts, package.json "$env:USERPROFILE\.config\opencode\plugins\model-badges\"
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.config\opencode\plugins\model-badges" | Out-Null
+Copy-Item index.ts, package.json "$env:USERPROFILE\.config\opencode\plugins\model-badges\"
 ```
 
 ```bash
@@ -45,7 +46,7 @@ mkdir -p ~/.config/opencode/plugins/model-badges
 cp index.ts package.json ~/.config/opencode/plugins/model-badges/
 ```
 
-**Option B — config reference** (apne `opencode.jsonc` me):
+**Option B — config reference** (add to your `opencode.jsonc`):
 
 ```jsonc
 {
@@ -53,23 +54,23 @@ cp index.ts package.json ~/.config/opencode/plugins/model-badges/
 }
 ```
 
-**Reload:** bas `opencode.jsonc` ka `LastWriteTime` touch karo (ya OpenCode restart) — plugin turant load ho jaata hai:
+**Reload:** just touch the `LastWriteTime` of `opencode.jsonc` (or restart OpenCode) — the plugin loads instantly:
 
 ```powershell
 (Get-Item "$env:USERPROFILE\.config\opencode\opencode.jsonc").LastWriteTime = Get-Date
 ```
 
-**Uninstall:** `plugins\model-badges` folder delete — done. Koi config entry, koi registry, koi service nahi.
+**Uninstall:** delete the `plugins\model-badges` folder — done. No config entries, no registry, no background service.
 
 ---
 
 ## 🚀 Use cases
 
-- **Multi-agent papad** — aapke 5-7 agents alag models pe parallel chalte hain; picker kholte hi dikhta hai kiska load kitna hai.
-- **Free-model rotation** — ek free model rate-limit me gaya? Turant pata chalega (uska badge hatta hai) — doosre pe shift ho jao.
-- **Stuck session detection** — koi session 10 minute se build chala raha hai? Uska `✅` usi model pe bana rehta hai (tool-call aware).
-- **Fair model choice** — jab tum naya session kholo, dekh lo kaun sa model already overloaded hai, kaun sa khali hai.
-- **Kid-safe dashboard** — model picker hi ban jaata hai ek live status board; alag monitoring tool ki zaroorat nahi.
+- **Multi-agent workflows** — 5-7 agents run on different models in parallel; open the picker and instantly see each model's load.
+- **Free-model rotation** — a free model got rate-limited? Its badge disappears — switch to a free one immediately.
+- **Stuck session detection** — a session building for 10 minutes keeps its `✅` on the same model (tool-call aware).
+- **Fair model choice** — when opening a new session, pick a model that is not already overloaded.
+- **Live status board** — the model picker doubles as a dashboard; no separate monitoring tool needed.
 
 ---
 
@@ -88,39 +89,39 @@ cp index.ts package.json ~/.config/opencode/plugins/model-badges/
                                                              └─────────────────────┘
 ```
 
-- **Events:** server ka SSE endpoint (`/api/event`) seedhe `fetch()` se padha jaata hai — **koi child process nahi**, koi terminal flash nahi, koi external dependency nahi.
-- **Liveness logic (teen layer, ek saath):**
-  1. **Authoritative** — `session.status` (`busy`/`retry`/`idle`) events.
-  2. **Activity TTL** — generation-stream events (`.delta`, `session.step.*`, `session.tool.*`, `usage.updated`) → 15 second tak badge zinda.
-  3. **Tool-call tracking** — lambi build/script ke dauran model chup ho jaata hai; `toolCallID` based open-call tracking badge ko tab tak bachata hai (max 10 min safety cap).
-- **Accuracy safety:** stale "idle" marks ko fresh activity override karti hai, deleted sessions ka saara state clean hota hai, aur 10 min ka safety refresh missed events ko bhi pakad leta hai.
-- **Badge hygiene:** naam har baar bare name se dobara banta hai (purana suffix strip → naya suffix) — kabhi double-badge ya stuck-badge mumkin nahi.
-- **Tuning:** `index.ts` ke top pe constants — `ACTIVITY_TTL_MS`, `STATUS_DEBOUNCE_MS`, `TOOL_MAX_MS`, `MIN_MULTI`.
+- **Events:** the server's SSE endpoint (`/api/event`) is read with plain `fetch()` — **no child processes, no terminal flash, no external dependencies**.
+- **Liveness logic (three layers, combined):**
+  1. **Authoritative** — `session.status` events (`busy` / `retry` / `idle`).
+  2. **Activity TTL** — generation-stream events (`.delta`, `session.step.*`, `session.tool.*`, `usage.updated`) keep a badge alive for 15 seconds.
+  3. **Tool-call tracking** — during a long build/script the model goes silent; open tool calls are tracked by `toolCallID` so the badge survives (max 10-minute safety cap).
+- **Accuracy safety:** stale "idle" marks are overridden by fresh activity, deleted sessions have all state cleaned, and a 10-minute safety refresh catches missed events.
+- **Badge hygiene:** names are rebuilt from the bare name every transform (old suffix stripped, new suffix appended) — double badges or stuck badges are impossible.
+- **Tuning:** constants at the top of `index.ts` — `ACTIVITY_TTL_MS`, `STATUS_DEBOUNCE_MS`, `TOOL_MAX_MS`, `MIN_MULTI`.
 
 ---
 
 ## ❓ FAQ
 
-**Q. Badge turant kyo nahi dikhta?**
-Updates ~0.5s debounce ke baad push hote hain. Isse pehle har token pe reload hota aur picker flicker karta — yehi sweet spot hai.
+**Q. Why isn't the badge instant?**
+Updates are pushed after a ~0.5s debounce. Updating per-token would reload the picker constantly and make it flicker — this is the sweet spot.
 
-**Q. Green aur blue tick ka farq?**
-Green `✅` = solo session. Blue `✔️ [N]` = ek hi model pe N parallel chats (Windows Segoe UI Emoji me U+2714 blue render hota hai — free ka design).
+**Q. What's the difference between the green and blue tick?**
+Green `✅` = a single session. Blue `✔️ [N]` = N parallel chats on the same model (U+2714 renders blue in Windows Segoe UI Emoji — free design).
 
-**Q. History count?**
-Nahi — sirf *abhi chal rahe* sessions count hote hain. Purane sessions badge nahi banate.
+**Q. Does history count?**
+No — only *currently running* sessions count. Old sessions never earn a badge.
 
-**Q. Debug kaise karun?**
-`~/.config/opencode/plugins/model-badges/debug.log` me `map: running=[...]` lines aati hain — wahin live state dekh sakte ho.
+**Q. How do I debug?**
+`~/.config/opencode/plugins/model-badges/debug.log` contains `map: running=[...]` lines showing the live state.
 
-**Q. Mera provider/ model list supported hai?**
-Haan — plugin kisi bhi provider ke models pe kaam karta hai, kyunki wo sirf model *names* transform karta hai.
+**Q. Does it work with any provider/model?**
+Yes — the plugin only transforms model *names*, so any provider is supported.
 
 ---
 
 ## 🤝 Contributing
 
-Issues aur PRs welcome! `index.ts` ek hi file hai — samajhna easy hai. Badges/UX ideas ke liye issue kholo.
+Issues and PRs are welcome! `index.ts` is a single file, so it's easy to read. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow. Good-first-issue ideas live on the [Issues page](https://github.com/engrtarun/opencode-model-badges/issues).
 
 ## 📄 License
 
@@ -128,4 +129,4 @@ Issues aur PRs welcome! `index.ts` ek hi file hai — samajhna easy hai. Badges/
 
 ---
 
-Made with ❤️ for OpenCode power users. Star ⭐ if it saved you a "kaun sa model busy hai?" wali confusion!
+Made with ❤️ for OpenCode power users. Star ⭐ if it saved you a "which model is busy right now?" moment!
