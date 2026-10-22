@@ -125,6 +125,33 @@ Yes — the plugin only transforms model *names*, so any provider is supported.
 
 ---
 
+## 🧯 #2: `fallback` — all-in-one model fallback engine (same repo, second plugin)
+
+Rate/usage limit aaya? This plugin aborts the stuck turn, puts the failed model on a doubling cooldown, and transparently re-sends the work on the next healthy model — your session, context and agent keep flowing. When the original model recovers, the next prompt goes back to it.
+
+```
+big-pickle ✕ (limit)  →  auto  →  glm-5.3-flash-free ✅  →  auto  →  back to big-pickle 🔄
+```
+
+- **Config:** `~/.config/opencode/fallback.json` — the chain is the full free pool (`big-pickle`, `glm-5.3-flash-free`, `deepseek-v4.1-flash-free`, `mimo-v2.6-flash-free`, `beam-free`, `flint-40b-free`, `nemotron-3.5-super-vl-free`). Delete lines to shrink it. See [`fallback.example.json`](fallback.example.json).
+- **Modes:** `cycle` (wrap the chain) / `stop` (toast and give up); transient errors (429/5xx) first let OpenCode's own retry policy take `maxRetries` swings, immediate classes (usage/quota) switch at once.
+- **Mid-run failures** send a configurable continue message (the assistant already produced work) instead of replaying the prompt; optional revert keeps history clean.
+- **State survives restarts** — cooldowns persist in `~/.local/share/opencode/model-fallback-state.json`; every switch logs via `client.app.log` + `plugins/fallback.log`.
+- **Install:** copy both plugins into `~/.config/opencode/plugins/`:
+
+```powershell
+Copy-Item index.ts, fallback.ts, package.json "$env:USERPROFILE\.config\opencode\plugins\"
+Copy-Item fallback.example.json "$env:USERPROFILE\.config\opencode\fallback.json"
+```
+
+- **Upstream watch (no submodules, no Watch needed):** [`upstream.json`](upstream.json) records feature sources + snapshot SHAs of 12 community repos; [`tools/upstream-check.mjs`](tools/upstream-check.mjs) runs daily on cron (`.github/workflows/upstream-check.yml`) and opens a tracking issue here the moment any upstream moves. The engine is an independent implementation — the manifest is traceability, not vendored code.
+
+### Feature provenance (12 repos distilled)
+
+chain cycles · cycle/stop modes · doubling cooldown · persistent cooldown state · toasts (azumag) · immediate vs transient classification · retry thresholds (HyeokjaeLee) · last-user replay · revert of partial turns (peva3) · flow-preserving switch (zaplakhov) · mid-run continue message (renjfk) — deferred ideas (benchmarks, discovery scoring, account balancing, quota tools) tracked as `(deferred)` in `upstream.json`.
+
+---
+
 ## 🤝 Contributing
 
 Issues and PRs are welcome! `index.ts` is a single file, so it's easy to read. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow. Good-first-issue ideas live on the [Issues page](https://github.com/engrtarun/opencode-model-badges/issues).

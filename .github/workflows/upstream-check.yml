@@ -1,0 +1,26 @@
+# Silent upstream watch: opens an issue in this repo when a tracked
+# repository's HEAD moves past the snapshot recorded in upstream.json.
+# Runs daily UTC morning and on demand.
+name: upstream-check
+
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Poll tracked repositories
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node tools/upstream-check.mjs

@@ -1,0 +1,20 @@
+{
+  "_note": "All-in-one fallback config. Chain = the full free pool; drop models by deleting lines. Reload OpenCode (or touch opencode.jsonc) after edits.",
+  "enabled": true,
+  "maxRetries": 2,
+  "cooldownMs": 60000,
+  "cooldownCapMs": 3600000,
+  "fallbackMode": "cycle",
+  "resetOnPrompt": true,
+  "revertOnFallback": true,
+  "continueMessage": "Continue from where you left off.",
+  "fallbackModels": [
+    "opencode/big-pickle",
+    "opencode/glm-5.3-flash-free",
+    "opencode/deepseek-v4.1-flash-free",
+    "opencode/mimo-v2.6-flash-free",
+    "opencode/beam-free",
+    "opencode/flint-40b-free",
+    "opencode/nemotron-3.5-super-vl-free"
+  ]
+}

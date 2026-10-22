@@ -1,0 +1,65 @@
+{
+  "_note": "upstream watch manifest — snapshot sha of each repository whose feature set feeds model-badges. upstream-check.mjs (cron) alerts when any repo moves; update the sha after adopting a change. No code is vendored from these repos — everything here is an independent implementation.",
+  "repositories": [
+    {
+      "repo": "azumag/opencode-rate-limit-fallback",
+      "sha": "d343af5b3a",
+      "adopted": ["fallback chain cycles", "cycle/stop modes", "doubling cooldown with cap", "cooldown persistence", "toast notifications", "retry-attempt threshold"]
+    },
+    {
+      "repo": "HyeokjaeLee/opencode-auto-fallback",
+      "sha": "ac15a1cd2c",
+      "adopted": ["immediate vs transient error classification", "max-retries before transients fall back", "logs via client.app.log"]
+    },
+    {
+      "repo": "peva3/opencode-fallback",
+      "sha": "9ac3ef46ff",
+      "adopted": ["replay last user message on fresh failure", "revert the incomplete assistant turn", "disconnect/retry loop awareness"]
+    },
+    {
+      "repo": "zaplakhov/opencode-rate-limit",
+      "sha": "ed466ddc7c",
+      "adopted": ["keep-the-flow switching without context loss"]
+    },
+    {
+      "repo": "renjfk/opencode-model-fallback",
+      "sha": "f79c895bb3",
+      "adopted": ["mid-run continue message instead of replay", "persistent global model cooldown state"]
+    },
+    {
+      "repo": "ChakornK/opencode-nim-rotator",
+      "sha": "178645f32b",
+      "adopted": ["(deferred) api-key rotation", "(deferred) latency benchmarking"]
+    },
+    {
+      "repo": "farhanic017/auto-model-switcher",
+      "sha": "cdb762620a",
+      "adopted": ["(deferred) auto-discovery of configured models", "(deferred) health scoring"]
+    },
+    {
+      "repo": "owjs3901/opencode-auth-load-balancer",
+      "sha": "434b263a2d",
+      "adopted": ["(deferred) weighted account balancing", "(deferred) proactive pre-limit switching"]
+    },
+    {
+      "repo": "Gooseware/opencode-antigravity-autopilot",
+      "sha": "739b86f5cf",
+      "adopted": ["(deferred) llm-facing quota tools"]
+    },
+    {
+      "repo": "Inokinoki/opencode-quota",
+      "sha": "3c0b43a2bb",
+      "adopted": ["(deferred) quota toasts"]
+    },
+    {
+      "repo": "Gl1ch5/opencode-gemini-auth-multi-account",
+      "sha": "60fc65f633",
+      "adopted": ["(deferred) multi-account exhaustion tracking", "not applicable — provider-oauth specific"]
+    },
+    {
+      "repo": "NoeFabris/opencode-antigravity-auth",
+      "sha": "f212f7eb01",
+      "adopted": ["not applicable — oauth auth surface", "reference for free-tier model ids"]
+    }
+  ]
+}
