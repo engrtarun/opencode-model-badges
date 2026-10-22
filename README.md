@@ -39,7 +39,7 @@ Do you run 5-7 chat sessions at once and lose track of which model is busy and w
 ```powershell
 # Windows
 New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.config\opencode\plugins\model-badges" | Out-Null
-Copy-Item index.ts, package.json "$env:USERPROFILE\.config\opencode\plugins\model-badges\"
+Copy-Item index.ts, lib.ts, package.json "$env:USERPROFILE\.config\opencode\plugins\model-badges\"
 ```
 
 ```bash
@@ -140,7 +140,7 @@ big-pickle ✕ (limit)  →  auto  →  glm-5.3-flash-free ✅  →  auto  →  
 - **Install:** copy both plugins into `~/.config/opencode/plugins/`:
 
 ```powershell
-Copy-Item index.ts, fallback.ts, package.json "$env:USERPROFILE\.config\opencode\plugins\"
+Copy-Item index.ts, lib.ts, fallback.ts, package.json "$env:USERPROFILE\.config\opencode\plugins\"
 Copy-Item fallback.example.json "$env:USERPROFILE\.config\opencode\fallback.json"
 ```
 

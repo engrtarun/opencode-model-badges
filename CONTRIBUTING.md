@@ -30,10 +30,14 @@ Thanks for your interest! This is a small, single-file plugin (`index.ts`), so i
 
 ## Running checks
 
-There is no heavy test harness yet — that's actually a great first contribution (see issue #3). For now:
+`npm test` runs the dependency-free Node built-in suite (badge stripping, badge selection, running/retry/exhausted counting). Node 22.6+ is all you need — no install step:
 
-- `npm run lint` is not applicable (no build). Just keep TypeScript strict and run `npx tsc --noEmit` mentally — or open the file in an editor with the OpenCode plugin types.
-- Manual smoke test: open the model picker while 2 sessions run on the same model → expect `✔️ [2]`; stop them → badge disappears within ~15s.
+```bash
+npm test
+```
+
+- Keep TypeScript strict; `npx tsc --noEmit` needs the OpenCode plugin types in scope.
+- Manual smoke test: run 2 sessions on the same model → expect `● [2]`; a rate-limited session shows `↻`; after retries are exhausted the model keeps `✕` until the provider's reset.
 
 ## Submitting a PR
 

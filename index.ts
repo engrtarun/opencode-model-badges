@@ -42,6 +42,7 @@
 // License: MIT
 
 import { Plugin } from "@opencode/plugin"
+import { countRunningModels, pickBadge, stripBadge } from "./lib.ts"
 
 const MAP_REFRESH_DEBOUNCE_MS = 8_000
 const STATUS_DEBOUNCE_MS = 500
@@ -60,7 +61,6 @@ const TOOL_START_RE = /session\.tool\.(called|input\.started|started)$/
 const TOOL_END_RE = /session\.tool\.(success|failed|errored|error|done|finished|closed)$/
 // Safety valve: a tool can't legitimately run forever — drop missed-end tools
 const TOOL_MAX_MS = 10 * 60_000
-const MIN_MULTI = 2
 // Rate-limit "exhausted" mark: when a retrying session drops back to idle
 // (OpenCode's retry policy gave up), keep ✕ on the model until the provider's
 // `next` retry epoch. Without a usable `next`, hold the mark for this long:
@@ -69,12 +69,6 @@ const RETRY_MARK_DEFAULT_MS = 10 * 60_000
 const RETRY_MARK_MAX_MS = 24 * 60 * 60_000
 const RECONNECT_MS = 3_000
 const MAP_REFRESH_INTERVAL_MS = 10 * 60_000
-
-// Strips every badge we may have appended, so names can never accumulate:
-// "X ● [3] ✅ ✔️ [4] ↻ ✕" is impossible. (Legacy ✅/✔️/⭐ kept so an old
-// build's names get cleaned up by a newer one on the first transform.)
-const SUFFIX_RE =
-  /(?:\s+(?:✅(?:\s*\d+x)?|⭐|✔️\s*\[\d+\]|●(?:\s*\[\d+\])?|↻|✕))+\s*$/u
 
 let debugPath = ""
 
@@ -95,7 +89,7 @@ export default Plugin.define({
     }
     try {
       const fs = await import("node:fs")
-      fs.writeFileSync(debugPath, "=== model-badges v0.1.0 setup ===\n")
+      fs.writeFileSync(debugPath, "=== model-badges setup ===\n")
     } catch {}
 
     // sessionID -> model key (refreshed by refreshMap)
@@ -124,49 +118,18 @@ export default Plugin.define({
     let exhaustedModels = new Set<string>()
 
     const recomputeRunning = () => {
-      const running = new Map<string, number>()
-      const retrying = new Map<string, number>()
-      const exhausted = new Set<string>()
-      const bump = (m: Map<string, number>, k: string | undefined) => {
-        if (!k) return
-        m.set(k, (m.get(k) ?? 0) + 1)
-      }
-      for (const id of statusBusy) bump(running, sessionModels.get(id))
-      // Fallback: fresh generation events OR an open (long-running) tool call
-      const now = Date.now()
-      for (const [id, ts] of lastActivity) {
-        if (statusKnown.has(id)) continue // authoritative status exists — trust only it
-        const open = toolBusy.get(id)
-        const oldest = open && open.size > 0 ? Math.min(...open.values()) : Infinity
-        const toolOpen = open !== undefined && open.size > 0 && now - oldest < TOOL_MAX_MS
-        if (!toolOpen && now - ts > ACTIVITY_TTL_MS) continue
-        bump(running, sessionModels.get(id))
-      }
-      // Sessions whose ONLY signal is an open tool (no activity entry yet)
-      for (const [id, open] of toolBusy) {
-        if (open.size === 0) continue
-        if (lastActivity.has(id) || statusKnown.has(id)) continue
-        if (now - Math.min(...open.values()) >= TOOL_MAX_MS) continue
-        bump(running, sessionModels.get(id))
-      }
-      // Retry sessions: rate-limited, backing off — shown as ↻ on the model
-      for (const id of statusRetry) {
-        const k = sessionModels.get(id)
-        if (!k) continue
-        retrying.set(k, (retrying.get(k) ?? 0) + 1)
-      }
-      // Exhausted marks: the session was retrying and its status dropped to
-      // idle (retry policy gave up). The mark survives until `until`; it is
-      // suppressed wherever the model is actually running or still retrying.
-      for (const [id, until] of retryMark) {
-        if (now >= until) {
-          retryMark.delete(id)
-          continue
-        }
-        const k = sessionModels.get(id)
-        if (!k || running.has(k) || retrying.has(k)) continue
-        exhausted.add(k)
-      }
+      const { running, retrying, exhausted } = countRunningModels({
+        sessionModels,
+        statusBusy,
+        statusRetry,
+        statusKnown,
+        retryMark,
+        lastActivity,
+        toolBusy,
+        now: Date.now(),
+        activityTtlMs: ACTIVITY_TTL_MS,
+        toolMaxMs: TOOL_MAX_MS,
+      })
       runningCount = running
       retryCount = retrying
       exhaustedModels = exhausted
@@ -207,15 +170,11 @@ export default Plugin.define({
       try {
         for (const model of editor.list()) {
           const key = `${model.providerID}/${model.id}`
-          const base = model.name.replace(SUFFIX_RE, "")
+          const base = stripBadge(model.name)
           const n = runningCount.get(key) ?? 0
           const r = retryCount.get(key) ?? 0
           // Priority: actually running wins, then rate-limited, then exhausted
-          let suffix = ""
-          if (n === 1) suffix = " ●"
-          else if (n >= MIN_MULTI) suffix = ` ● [${n}]`
-          else if (r > 0) suffix = " ↻"
-          else if (exhaustedModels.has(key)) suffix = " ✕"
+          const suffix = pickBadge(n, r, exhaustedModels.has(key))
           const final = base + suffix
           if (final !== model.name) {
             editor.update(model.providerID, model.id, (draft) => {
