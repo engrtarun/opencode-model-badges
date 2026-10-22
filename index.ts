@@ -3,15 +3,24 @@
 // ---------------------------------------------------------------------------
 //
 // What it shows (suffix on the model name inside the model picker):
-//   exactly 1 session running on a model   ->  "Big Pickle ✅"        (green)
-//   2+ sessions running on the same model  ->  "Big Pickle ✔️ [3]"   (blue + count)
+//   exactly 1 session running on a model   ->  "Big Pickle ●"        (U+25CF dot)
+//   2+ sessions running on the same model  ->  "Big Pickle ● [3]"    (dot + count)
+//   model rate-limited (session retrying)  ->  "Big Pickle ↻"        (U+21BB retry arrow)
+//   limit exhausted / final failure        ->  "Big Pickle ✕"        (U+2715 cross)
 //   nothing running                        ->  no badge at all
 //
 // N = number of CURRENTLY RUNNING chat sessions — never history totals.
 //
 // Design notes:
-//   - ✔️ (U+2714) renders as a BLUE checkmark in Windows Segoe UI Emoji,
-//     which is what gives the nice green-vs-blue distinction for free.
+//   - Pure Unicode text glyphs (● ↻ ✕) instead of emoji — monochrome,
+//     monospace-friendly, and rendered identically by every terminal and
+//     font (no Segoe UI Emoji / color-emoji dependency).
+//   - Rate-limit visibility: OpenCode core classifies 429s and sets
+//     session status to "retry" while it backs off. A retrying session is
+//     NOT running — it earns ↻. When the status drops back to idle (the
+//     retry policy gave up), the model keeps ✕ until the provider-provided
+//     `next` retry epoch (usage-limit resets can be hours away), capped at
+//     24h, falling back to RETRY_MARK_DEFAULT_MS when no `next` arrives.
 //   - In-process ctx.event.subscribe() delivered ZERO events in practice;
 //     this plugin instead consumes the server's SSE stream (GET /api/event)
 //     with plain fetch() — no child processes, no terminal flash.
@@ -22,8 +31,12 @@
 //   - Names are re-derived from the bare name on every transform (badge
 //     suffix is stripped first), so badges can never accumulate or go stale.
 //
-// Event schema (reverse-engineered from the OpenCode CLI):
-//   session.status -> { sessionID, status: { type: "busy"|"idle"|"retry" } }
+// Event schema (reverse-engineered from the OpenCode CLI / SDK types):
+//   session.status -> { sessionID, status: {
+//     type: "busy"|"idle"|"retry",
+//     attempt?, message?, next?,            // present on retry
+//     action?: { reason: "free_tier_limit"|"account_rate_limit", ... }
+//   } }
 //   session.idle   -> { sessionID }
 //
 // License: MIT
@@ -48,12 +61,20 @@ const TOOL_END_RE = /session\.tool\.(success|failed|errored|error|done|finished|
 // Safety valve: a tool can't legitimately run forever — drop missed-end tools
 const TOOL_MAX_MS = 10 * 60_000
 const MIN_MULTI = 2
+// Rate-limit "exhausted" mark: when a retrying session drops back to idle
+// (OpenCode's retry policy gave up), keep ✕ on the model until the provider's
+// `next` retry epoch. Without a usable `next`, hold the mark for this long:
+const RETRY_MARK_DEFAULT_MS = 10 * 60_000
+// ...but never trust a provider-provided `next` beyond a day:
+const RETRY_MARK_MAX_MS = 24 * 60 * 60_000
 const RECONNECT_MS = 3_000
 const MAP_REFRESH_INTERVAL_MS = 10 * 60_000
 
 // Strips every badge we may have appended, so names can never accumulate:
-// "X ✔️ [3] ✅ ✔️ [4]" is impossible.
-const SUFFIX_RE = /(?:\s+(?:✅(?:\s*\d+x)?|⭐|✔️\s*\[\d+\]))+\s*$/u
+// "X ● [3] ✅ ✔️ [4] ↻ ✕" is impossible. (Legacy ✅/✔️/⭐ kept so an old
+// build's names get cleaned up by a newer one on the first transform.)
+const SUFFIX_RE =
+  /(?:\s+(?:✅(?:\s*\d+x)?|⭐|✔️\s*\[\d+\]|●(?:\s*\[\d+\])?|↻|✕))+\s*$/u
 
 let debugPath = ""
 
@@ -81,23 +102,36 @@ export default Plugin.define({
     const sessionModels = new Map<string, string>()
     // Authoritative busy set from session.status events
     const statusBusy = new Set<string>()
+    // Authoritative retry set — sessions blocked on an OpenCode retry policy
+    // (rate limit / 429 back-off). These are NOT running; they earn ↻, not ●.
+    const statusRetry = new Set<string>()
     // Sessions for which we have authoritative status (event-based)
     const statusKnown = new Set<string>()
+    // sid -> epoch until which the model stays marked "limit exhausted" (✕)
+    // after that session's retry status dropped to idle. Provider-provided
+    // `next` when we got one, otherwise now + RETRY_MARK_DEFAULT_MS.
+    const retryMark = new Map<string, number>()
     // Recent generation-stream timestamps for sessions whose status is unknown
     const lastActivity = new Map<string, number>()
     // Open tool executions per session: sessionID -> Map<toolCallID, startedAt>
     // (Map rather than Set so we also know the oldest open call for the safety cap)
     const toolBusy = new Map<string, Map<string, number>>()
-    // model key -> count of currently running sessions; drives the badges
+    // model key -> count of currently running sessions; drives the ● badges
     let runningCount = new Map<string, number>()
+    // model key -> count of sessions currently blocked in retry (rate limit)
+    let retryCount = new Map<string, number>()
+    // model keys whose latest activity was a retry policy that gave up (✕)
+    let exhaustedModels = new Set<string>()
 
     const recomputeRunning = () => {
-      const next = new Map<string, number>()
-      const bump = (k: string | undefined) => {
+      const running = new Map<string, number>()
+      const retrying = new Map<string, number>()
+      const exhausted = new Set<string>()
+      const bump = (m: Map<string, number>, k: string | undefined) => {
         if (!k) return
-        next.set(k, (next.get(k) ?? 0) + 1)
+        m.set(k, (m.get(k) ?? 0) + 1)
       }
-      for (const id of statusBusy) bump(sessionModels.get(id))
+      for (const id of statusBusy) bump(running, sessionModels.get(id))
       // Fallback: fresh generation events OR an open (long-running) tool call
       const now = Date.now()
       for (const [id, ts] of lastActivity) {
@@ -106,16 +140,36 @@ export default Plugin.define({
         const oldest = open && open.size > 0 ? Math.min(...open.values()) : Infinity
         const toolOpen = open !== undefined && open.size > 0 && now - oldest < TOOL_MAX_MS
         if (!toolOpen && now - ts > ACTIVITY_TTL_MS) continue
-        bump(sessionModels.get(id))
+        bump(running, sessionModels.get(id))
       }
       // Sessions whose ONLY signal is an open tool (no activity entry yet)
       for (const [id, open] of toolBusy) {
         if (open.size === 0) continue
         if (lastActivity.has(id) || statusKnown.has(id)) continue
         if (now - Math.min(...open.values()) >= TOOL_MAX_MS) continue
-        bump(sessionModels.get(id))
+        bump(running, sessionModels.get(id))
       }
-      runningCount = next
+      // Retry sessions: rate-limited, backing off — shown as ↻ on the model
+      for (const id of statusRetry) {
+        const k = sessionModels.get(id)
+        if (!k) continue
+        retrying.set(k, (retrying.get(k) ?? 0) + 1)
+      }
+      // Exhausted marks: the session was retrying and its status dropped to
+      // idle (retry policy gave up). The mark survives until `until`; it is
+      // suppressed wherever the model is actually running or still retrying.
+      for (const [id, until] of retryMark) {
+        if (now >= until) {
+          retryMark.delete(id)
+          continue
+        }
+        const k = sessionModels.get(id)
+        if (!k || running.has(k) || retrying.has(k)) continue
+        exhausted.add(k)
+      }
+      runningCount = running
+      retryCount = retrying
+      exhaustedModels = exhausted
     }
 
     // ---- session -> model map (in-process, paginated) ----
@@ -141,7 +195,11 @@ export default Plugin.define({
         if (!seen.has(id)) sessionModels.delete(id)
       }
       recomputeRunning()
-      dbg(`map: sessions=${sessionModels.size} running=[${[...runningCount].map(([k, n]) => `${k}(${n})`).join(",")}]`)
+      dbg(
+        `map: sessions=${sessionModels.size} running=[${[...runningCount].map(([k, n]) => `${k}(${n})`).join(",")}] ` +
+          `retry=[${[...retryCount].map(([k, n]) => `${k}(${n})`).join(",")}] ` +
+          `exhausted=[${[...exhaustedModels].join(",")}]`,
+      )
     }
 
     // ---- model name transform ----
@@ -151,10 +209,13 @@ export default Plugin.define({
           const key = `${model.providerID}/${model.id}`
           const base = model.name.replace(SUFFIX_RE, "")
           const n = runningCount.get(key) ?? 0
-          // 1 running -> green ✅ only; 2+ running -> blue ✔️ [N] only
+          const r = retryCount.get(key) ?? 0
+          // Priority: actually running wins, then rate-limited, then exhausted
           let suffix = ""
-          if (n === 1) suffix += " ✅"
-          else if (n >= MIN_MULTI) suffix += ` ✔️ [${n}]`
+          if (n === 1) suffix = " ●"
+          else if (n >= MIN_MULTI) suffix = ` ● [${n}]`
+          else if (r > 0) suffix = " ↻"
+          else if (exhaustedModels.has(key)) suffix = " ✕"
           const final = base + suffix
           if (final !== model.name) {
             editor.update(model.providerID, model.id, (draft) => {
@@ -229,6 +290,7 @@ export default Plugin.define({
           const key = typeof tcid === "string" ? tcid : `anon:${Date.now()}`
           open.set(key, Date.now())
           statusKnown.delete(sid) // an open tool OVERRIDES any stale idle status
+          statusRetry.delete(sid) // a session executing tools is not rate-limited
           lastActivity.set(sid, Date.now())
           dbg(`toolEv start ${type} sid=${sid} open=${open.size}`)
           recomputeRunning()
@@ -237,16 +299,38 @@ export default Plugin.define({
         }
         if (type === "session.status" || type === "session.idle") {
           let stType: string | undefined
+          let next: number | undefined
           if (type === "session.status") {
-            const st = data.status as { type?: string } | string | undefined
+            const st = data.status as { type?: string; next?: unknown } | string | undefined
             stType = typeof st === "string" ? st : st?.type
+            if (typeof st === "object" && st && typeof (st as { next?: unknown }).next === "number") {
+              next = (st as { next?: number }).next
+            }
           } else {
             stType = "idle"
           }
           statusKnown.add(sid)
-          if (stType === "busy" || stType === "retry") statusBusy.add(sid)
-          else statusBusy.delete(sid)
-          dbg(`statusEv ${type} sid=${sid} st=${stType}`)
+          if (stType === "busy") {
+            statusBusy.add(sid)
+            statusRetry.delete(sid)
+          } else if (stType === "retry") {
+            // Rate-limited: OpenCode is backing off. NOT running — ↻ territory.
+            statusRetry.add(sid)
+            statusBusy.delete(sid)
+            // Hold the exhausted mark until the provider's own `next` epoch
+            // (usage-limit resets can be hours away), capped at 24h; fall back
+            // to a fixed window when the event carries no usable `next`.
+            const now = Date.now()
+            const until = next && next > now && next <= now + RETRY_MARK_MAX_MS
+              ? Math.max(retryMark.get(sid) ?? 0, next)
+              : Math.max(retryMark.get(sid) ?? 0, now + RETRY_MARK_DEFAULT_MS)
+            retryMark.set(sid, until)
+          } else {
+            // idle: the retry policy gave up → ✕ mark (already set) survives
+            statusBusy.delete(sid)
+            statusRetry.delete(sid)
+          }
+          dbg(`statusEv ${type} sid=${sid} st=${stType} next=${next ?? "-"}`)
           recomputeRunning()
           schedule(STATUS_DEBOUNCE_MS)
           return
@@ -254,8 +338,10 @@ export default Plugin.define({
         if (GEN_RE.test(type)) {
           lastActivity.set(sid, Date.now())
           // Fresh activity = alive RIGHT NOW; it overrides any stale "idle"
-          // mark, otherwise a session that idled once could never go green again.
+          // or "retry" mark, otherwise a session that idled or rate-limited
+          // once could never go live again.
           statusKnown.delete(sid)
+          statusRetry.delete(sid)
           const before = [...runningCount].sort().toString()
           recomputeRunning()
           const after = [...runningCount].sort().toString()
@@ -274,7 +360,9 @@ export default Plugin.define({
             toolBusy.delete(sid)
             lastActivity.delete(sid)
             statusBusy.delete(sid)
+            statusRetry.delete(sid)
             statusKnown.delete(sid)
+            retryMark.delete(sid)
           }
           // New/deleted/moved sessions or model switch -> refresh session->model map
           schedule(MAP_REFRESH_DEBOUNCE_MS)

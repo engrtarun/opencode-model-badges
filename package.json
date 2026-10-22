@@ -1,7 +1,7 @@
 {
   "name": "opencode-model-badges",
-  "version": "0.1.0",
-  "description": "Live ✅ / ✔️[N] running-session badges on model names inside the OpenCode model picker.",
+  "version": "0.2.0",
+  "description": "Live ● / ●[N] / ↻ / ✕ session & rate-limit badges on model names inside the OpenCode model picker.",
   "type": "module",
   "exports": {
     ".": "./index.ts"
