@@ -94,6 +94,7 @@ export default Plugin.define({
 
     // sessionID -> model key (refreshed by refreshMap)
     const sessionModels = new Map<string, string>()
+    let modelRevision = 0
     // Authoritative busy set from session.status events
     const statusBusy = new Set<string>()
     // Authoritative retry set — sessions blocked on an OpenCode retry policy
@@ -138,12 +139,18 @@ export default Plugin.define({
     // ---- session -> model map (in-process, paginated) ----
     // Needed to translate running sessionIDs into model keys.
     const refreshMap = async () => {
+      const revision = modelRevision
       const seen = new Set<string>()
       let cursor: string | undefined
       for (let page = 0; page < 200; page++) {
         const input: { limit: number; cursor?: string } = { limit: 100 }
         if (cursor) input.cursor = cursor
         const res = await ctx.session.list(input)
+        // An event is newer than an in-flight list; don't restore its old model.
+        if (revision !== modelRevision) {
+          schedule(MAP_REFRESH_DEBOUNCE_MS)
+          return
+        }
         for (const s of res.data) {
           if (!s.model) continue
           const key = `${s.model.providerID}/${s.model.id}`
@@ -307,12 +314,24 @@ export default Plugin.define({
           if (before !== after) schedule(STATUS_DEBOUNCE_MS)
           return
         }
+        if (type.startsWith("session.model")) {
+          const model = data.model as { providerID?: unknown; id?: unknown; modelID?: unknown } | undefined
+          const modelID = model?.id ?? model?.modelID
+          if (typeof model?.providerID === "string" && model.providerID && typeof modelID === "string" && modelID) {
+            modelRevision++
+            sessionModels.set(sid, `${model.providerID}/${modelID}`)
+            recomputeRunning()
+            void ctx.model.reload().catch((e) => dbg(`model reload: ${e}`))
+          } else {
+            schedule(STATUS_DEBOUNCE_MS)
+          }
+          return
+        }
         if (
           type === "session.created" ||
           type === "session.updated" ||
           type === "session.deleted" ||
-          type === "session.moved" ||
-          type.startsWith("session.model")
+          type === "session.moved"
         ) {
           if (type === "session.deleted") {
             // No leaks: drop all per-session state for deleted sessions
