@@ -10,6 +10,7 @@
 [![Zero-child-process](https://img.shields.io/badge/child%20processes-0-brightgreen.svg)](#-how-it-works)
 [![SSE](https://img.shields.io/badge/events-SSE%20stream-orange.svg)](#-how-it-works)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Discussions](https://img.shields.io/badge/community-discussions-8957e5.svg)](https://github.com/engrtarun/opencode-model-badges/discussions)
 
 Do you run 5-7 chat sessions at once and lose track of which model is busy and which is idle? This plugin appends a **live badge** to every model name in the picker:
 
@@ -31,6 +32,8 @@ Do you run 5-7 chat sessions at once and lose track of which model is busy and w
 | `✕` | **Limit exhausted** — the retry policy gave up; shown until the provider's reset epoch (default 10 min, capped 24 h) |
 
 > **Only currently running sessions are counted — never history.** A model earns a badge only while it is actively working.
+
+**Community:** questions, ideas, show-and-tell → [Discussions](https://github.com/engrtarun/opencode-model-badges/discussions). The v0.4 roadmap vote lives in [discussion #16](https://github.com/engrtarun/opencode-model-badges/discussions/16).
 
 ---
 
