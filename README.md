@@ -1,10 +1,12 @@
-﻿# ✅ opencode-model-badges
+﻿# ● opencode-model-badges
 
 > **Live session badges on every model name — right inside the OpenCode model picker.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![OpenCode](https://img.shields.io/badge/OpenCode-plugin-7c3aed.svg)](https://opencode.ai)
-[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](https://github.com/engrtarun/opencode-model-badges/releases)
+[![Version](https://img.shields.io/badge/version-0.3.1-green.svg)](https://github.com/engrtarun/opencode-model-badges/releases)
+[![tests](https://github.com/engrtarun/opencode-model-badges/actions/workflows/test.yml/badge.svg)](https://github.com/engrtarun/opencode-model-badges/actions/workflows/test.yml)
+[![Node](https://img.shields.io/badge/node-%E2%89%A522.6-green.svg)](package.json)
 [![Zero-child-process](https://img.shields.io/badge/child%20processes-0-brightgreen.svg)](#-how-it-works)
 [![SSE](https://img.shields.io/badge/events-SSE%20stream-orange.svg)](#-how-it-works)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
