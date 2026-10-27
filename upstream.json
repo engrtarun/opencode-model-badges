@@ -3,7 +3,7 @@
   "repositories": [
     {
       "repo": "azumag/opencode-rate-limit-fallback",
-      "sha": "d343af5b3a",
+      "sha": "51e7b48bd",
       "adopted": ["fallback chain cycles", "cycle/stop modes", "doubling cooldown with cap", "cooldown persistence", "toast notifications", "retry-attempt threshold"]
     },
     {
