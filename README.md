@@ -12,6 +12,10 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Discussions](https://img.shields.io/badge/community-discussions-8957e5.svg)](https://github.com/engrtarun/opencode-model-badges/discussions)
 
+<p align="center">
+  <img src="docs/demo.gif" width="760" alt="live demo: running ● / ● [N] sessions, instant badge move on model switch (session.model.updated), rate-limited ↻, limit exhausted ✕">
+</p>
+
 Do you run 5-7 chat sessions at once and lose track of which model is busy and which is idle? This plugin appends a **live badge** to every model name in the picker:
 
 ```
