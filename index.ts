@@ -61,6 +61,16 @@ const TOOL_START_RE = /session\.tool\.(called|input\.started|started)$/
 const TOOL_END_RE = /session\.tool\.(success|failed|errored|error|done|finished|closed)$/
 // Safety valve: a tool can't legitimately run forever — drop missed-end tools
 const TOOL_MAX_MS = 10 * 60_000
+// OpenCode v2 moved execution state out of session.status entirely:
+//   session.retry.scheduled { at, attempt, error } — rate-limit back-off
+//   session.execution.started|succeeded|failed|interrupted — turn lifecycle
+// Both ship `created` stamps and durable envelopes that can REPLAY after a
+// reconnect, so liveness marks are gated on arrival freshness.
+const V2_RETRY_RE = /^session\.retry\.scheduled$/
+const V2_EXEC_RE = /^session\.execution\.(started|succeeded|failed|interrupted)$/
+// Frames stamped older than this relative to the current connection are
+// history, never liveness (ghost ● guard for replayed session.step.*).
+const REPLAY_GATE_MS = 2_000
 // Rate-limit "exhausted" mark: when a retrying session drops back to idle
 // (OpenCode's retry policy gave up), keep ✕ on the model until the provider's
 // `next` retry epoch. Without a usable `next`, hold the mark for this long:
@@ -106,6 +116,9 @@ export default Plugin.define({
     // after that session's retry status dropped to idle. Provider-provided
     // `next` when we got one, otherwise now + RETRY_MARK_DEFAULT_MS.
     const retryMark = new Map<string, number>()
+    // Wall-clock of the last successful SSE connection: durable v2 payloads
+    // can replay after a reconnect, so `created` < connectEpoch = history.
+    let connectEpoch = Date.now()
     // Recent generation-stream timestamps for sessions whose status is unknown
     const lastActivity = new Map<string, number>()
     // Open tool executions per session: sessionID -> Map<toolCallID, startedAt>
@@ -214,12 +227,51 @@ export default Plugin.define({
     // Initial map refresh + slow safety refresh (guards against missed events)
     schedule(STATUS_DEBOUNCE_MS)
     const safety = setInterval(() => schedule(MAP_REFRESH_DEBOUNCE_MS), MAP_REFRESH_INTERVAL_MS)
+    // A v2 back-off whose follow-up execution event was missed (restart,
+    // reconnect) must not hold ↻ forever — drop it once its terminal mark expires.
+    const sweeper = setInterval(() => {
+      const now = Date.now()
+      let stale = false
+      for (const sid of [...statusRetry]) {
+        if ((retryMark.get(sid) ?? 0) <= now) {
+          statusRetry.delete(sid)
+          stale = true
+        }
+      }
+      if (stale) recomputeRunning()
+    }, 60_000)
+
+    // ---- session bookkeeping helpers (shared by v1 and v2 event paths) ----
+    // No leaks: drop all per-session state for deleted sessions.
+    const forgetSession = (sid: string) => {
+      toolBusy.delete(sid)
+      lastActivity.delete(sid)
+      statusBusy.delete(sid)
+      statusRetry.delete(sid)
+      statusKnown.delete(sid)
+      retryMark.delete(sid)
+    }
+    // session.model.* — v1 frame: data.model{providerID, id}; v2 frame:
+    // session.model.selected { model, previous }. One matcher covers both,
+    // and the badge moves the instant the event lands.
+    const applyModelEvent = (sid: string, data: Record<string, unknown>) => {
+      const model = data.model as { providerID?: unknown; id?: unknown; modelID?: unknown } | undefined
+      const modelID = model?.id ?? model?.modelID
+      if (typeof model?.providerID === "string" && model.providerID && typeof modelID === "string" && modelID) {
+        modelRevision++
+        sessionModels.set(sid, `${model.providerID}/${modelID}`)
+        recomputeRunning()
+        void ctx.model.reload().catch((e) => dbg(`model reload: ${e}`))
+      } else {
+        schedule(STATUS_DEBOUNCE_MS)
+      }
+    }
 
     // ---- SSE event stream (auto-reconnects forever) ----
     const sse = new AbortController()
 
     const handleEvent = (line: string) => {
-      let payload: { type?: string; data?: Record<string, unknown> } | undefined
+      let payload: { type?: string; data?: Record<string, unknown>; created?: unknown } | undefined
       try {
         payload = JSON.parse(line)
       } catch {
@@ -228,8 +280,22 @@ export default Plugin.define({
       const type = payload?.type
       if (typeof type !== "string") return
       const data = (payload.data ?? payload) as Record<string, unknown>
+      const created = typeof payload.created === "number" ? payload.created : Number.NaN
       const sid = data.sessionID
       if (typeof sid === "string") {
+        // Durable history replay (v2): frames stamped before this connection
+        // may still fix bookkeeping (model map, deletions) but must NEVER
+        // produce liveness, retry, or busy state — a replayed session.step.*
+        // would otherwise paint a ghost ● on a session that idled days ago.
+        if (Number.isFinite(created) && connectEpoch - created > REPLAY_GATE_MS) {
+          if (type.startsWith("session.model")) {
+            applyModelEvent(sid, data)
+            return
+          }
+          if (type === "session.deleted") forgetSession(sid)
+          if (type === "session.created" || type === "session.moved") schedule(MAP_REFRESH_DEBOUNCE_MS)
+          return
+        }
         // ---- tool lifecycle (BEFORE GEN_RE: session.tool.* matches both) ----
         if (TOOL_END_RE.test(type)) {
           const tcid = data.toolCallID
@@ -301,6 +367,42 @@ export default Plugin.define({
           schedule(STATUS_DEBOUNCE_MS)
           return
         }
+        if (V2_RETRY_RE.test(type)) {
+          // v2 rate-limit back-off: the same ↻ semantics the v1 retry status
+          // carried. `at` is the provider's own resume epoch — the seat of
+          // the ✕ window if this back-off chain dies later.
+          const now = Date.now()
+          const at = typeof data.at === "number" ? data.at : Number.NaN
+          const until = Number.isFinite(at) && at > now && at <= now + RETRY_MARK_MAX_MS
+            ? Math.max(retryMark.get(sid) ?? 0, at)
+            : Math.max(retryMark.get(sid) ?? 0, now + RETRY_MARK_DEFAULT_MS)
+          retryMark.set(sid, until)
+          statusKnown.add(sid)
+          statusRetry.add(sid)
+          statusBusy.delete(sid)
+          dbg(`v2 retry sid=${sid} until=${until}`)
+          recomputeRunning()
+          schedule(STATUS_DEBOUNCE_MS)
+          return
+        }
+        if (V2_EXEC_RE.test(type)) {
+          if (type.endsWith("started")) {
+            statusKnown.add(sid)
+            statusBusy.add(sid)
+            statusRetry.delete(sid)
+          } else {
+            // ended / failed / interrupted: not running. The ✕ mark survives
+            // exactly like v1 (retryMark epoch). A failure WITHOUT any
+            // back-off event in the chain earns no ✕ at all (#10).
+            statusKnown.add(sid)
+            statusBusy.delete(sid)
+            statusRetry.delete(sid)
+          }
+          dbg(`v2 execution ${type.slice(18)} sid=${sid}`)
+          recomputeRunning()
+          schedule(STATUS_DEBOUNCE_MS)
+          return
+        }
         if (GEN_RE.test(type)) {
           lastActivity.set(sid, Date.now())
           // Fresh activity = alive RIGHT NOW; it overrides any stale "idle"
@@ -315,16 +417,7 @@ export default Plugin.define({
           return
         }
         if (type.startsWith("session.model")) {
-          const model = data.model as { providerID?: unknown; id?: unknown; modelID?: unknown } | undefined
-          const modelID = model?.id ?? model?.modelID
-          if (typeof model?.providerID === "string" && model.providerID && typeof modelID === "string" && modelID) {
-            modelRevision++
-            sessionModels.set(sid, `${model.providerID}/${modelID}`)
-            recomputeRunning()
-            void ctx.model.reload().catch((e) => dbg(`model reload: ${e}`))
-          } else {
-            schedule(STATUS_DEBOUNCE_MS)
-          }
+          applyModelEvent(sid, data)
           return
         }
         if (
@@ -333,15 +426,7 @@ export default Plugin.define({
           type === "session.deleted" ||
           type === "session.moved"
         ) {
-          if (type === "session.deleted") {
-            // No leaks: drop all per-session state for deleted sessions
-            toolBusy.delete(sid)
-            lastActivity.delete(sid)
-            statusBusy.delete(sid)
-            statusRetry.delete(sid)
-            statusKnown.delete(sid)
-            retryMark.delete(sid)
-          }
+          if (type === "session.deleted") forgetSession(sid)
           // New/deleted/moved sessions or model switch -> refresh session->model map
           schedule(MAP_REFRESH_DEBOUNCE_MS)
         }
@@ -374,6 +459,7 @@ export default Plugin.define({
           })
           if (!res.ok || !res.body) throw new Error(`SSE HTTP ${res.status}`)
           dbg("sse connected")
+          connectEpoch = Date.now()
           const reader = res.body.getReader()
           const dec = new TextDecoder()
           let buf = ""
@@ -400,6 +486,7 @@ export default Plugin.define({
     return () => {
       sse.abort()
       clearInterval(safety)
+      clearInterval(sweeper)
       if (timer) clearTimeout(timer)
     }
   },

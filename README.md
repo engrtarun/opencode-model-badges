@@ -108,6 +108,7 @@ cp index.ts package.json ~/.config/opencode/plugins/model-badges/
   4. **Rate-limit tracking** — a session whose status is `retry` is blocked, not running: the model earns `↻`. If the retry policy gives up (status drops to idle), the model keeps `✕` until the provider-provided `next` epoch (`retry-after`), capped at 24 h, default window 10 min.
 - **Accuracy safety:** stale "idle" and "retry" marks are overridden by fresh activity, deleted sessions have all state cleaned, and a 10-minute safety refresh catches missed events.
 - **Model switches:** when an event carries the selected model, its session's badge moves immediately without listing sessions again. Incomplete model events refresh the paginated map after the normal 0.5-second debounce; bulk session updates keep their 8-second debounce.
+- **OpenCode v1 + v2 channels:** the same badge contract covers both event vocabularies — v1's `session.status` / `session.idle`, and v2's `session.model.selected` / `session.retry.scheduled` / `session.execution.*` (a model switch moves its badge instantly on both). Durable v2 frames replayed after a reconnect may fix bookkeeping but never paint liveness — no ghost ● on sessions that idled before the connection.
 - **Badge hygiene:** names are rebuilt from the bare name every transform (old suffix stripped, new suffix appended) — double badges or stuck badges are impossible.
 - **Tuning:** constants at the top of `index.ts` — `ACTIVITY_TTL_MS`, `STATUS_DEBOUNCE_MS`, `TOOL_MAX_MS`, `MIN_MULTI`, `RETRY_MARK_DEFAULT_MS`, `RETRY_MARK_MAX_MS`.
 
