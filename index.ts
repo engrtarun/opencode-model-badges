@@ -166,9 +166,22 @@ export default Plugin.define({
         }
         for (const s of res.data) {
           if (!s.model) continue
+          // Subagent sessions are children of the conversation you see — they
+          // run on the same model and would inflate the count one per child
+          // (#12). The parent's badge owns the slot; children never map.
+          if (typeof (s as { parentID?: unknown }).parentID === "string") continue
           const key = `${s.model.providerID}/${s.model.id}`
           sessionModels.set(s.id, key)
           seen.add(s.id)
+          // v2 Session.Info carries execution state on the wire — seed the
+          // authoritative busy set from it so a badge never flickers off
+          // while the SSE stream catches up after a reconnect.
+          const ti = (s as { time?: { busy?: unknown; idle?: unknown } }).time
+          if (typeof ti?.busy === "number" && (typeof ti.idle !== "number" || ti.busy > ti.idle)) {
+            statusKnown.add(s.id)
+            statusBusy.add(s.id)
+            statusRetry.delete(s.id)
+          }
         }
         cursor = res.cursor?.next
         if (!cursor) break

@@ -9,7 +9,7 @@ register("./fixtures/plugin-loader.js", import.meta.url)
 const { default: plugin } = await import("../index.ts")
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
-async function setup(t) {
+async function setup(t, list = [{ id: "s1", model: { providerID: "provider", id: "a" } }]) {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] })
   let stream
   let connected
@@ -29,7 +29,7 @@ async function setup(t) {
   ])
   let transform
   const ctx = {
-    session: { list: async () => ({ data: [{ id: "s1", model: { providerID: "provider", id: "a" } }] }) },
+    session: { list: async () => ({ data: list }) },
     model: {
       transform: async (fn) => { transform = fn },
       reload: async () => transform({
@@ -97,6 +97,20 @@ test("replayed durable history cannot resurrect a ghost ● on an idle session",
   assert.equal(h.name("provider/a"), "A")
   // fresh live generation still goes running
   await h.emit("session.text.delta", { sessionID: "s1", assistantMessageID: "m1", ordinal: 0, delta: "x" })
+  await h.tick(500)
+  assert.equal(h.name("provider/a"), "A ●")
+})
+
+test("subagent sessions (parentID) never inflate the count and time.busy seeds liveness (#12)", async (t) => {
+  const h = await setup(t, [
+    // root conversation currently running — authoritative from the wire DTO
+    { id: "root", model: { providerID: "provider", id: "a" }, time: { busy: Date.now() - 5_000 } },
+    // its subagent child, running the identical model — must NOT paint ● [2]
+    { id: "agent", parentID: "root", model: { providerID: "provider", id: "a" }, time: { busy: Date.now() - 5_000 } },
+  ])
+  assert.equal(h.name("provider/a"), "A ●")
+  // even live child events cannot inflate the visible count
+  await h.emit("session.execution.started", { sessionID: "agent" })
   await h.tick(500)
   assert.equal(h.name("provider/a"), "A ●")
 })
