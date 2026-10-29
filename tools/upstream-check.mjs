@@ -6,7 +6,8 @@
 // when upstream moves. To upgrade, update the sha in upstream.json.
 // ---------------------------------------------------------------------------
 
-import { readFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -35,6 +36,7 @@ const gh = async (path, init = {}) => {
 }
 
 const changed = []
+const silent = []
 for (const entry of manifest.repositories) {
   const { repo, sha: snapshot } = entry
   try {
@@ -42,11 +44,29 @@ for (const entry of manifest.repositories) {
     const current = head.sha.slice(0, 10)
     entry.lastSeen = current
     entry.lastSeenDate = head.commit.committer.date
-    if (snapshot && current !== snapshot) {
-      changed.push({ repo, from: snapshot, to: current, url: head.html_url })
-      entry.sha = current // ahead of the issue body so the manifest stays fresh
-    } else if (!snapshot) {
+    if (!snapshot) {
       entry.sha = current // first run records the baseline silently
+      continue
+    }
+    if (current === snapshot) continue
+    // A sha change alone is NOT proof of content: repositories that rebase or
+    // force-push (CI-stamped sha daily churn) look "moved" while the tree is
+    // identical. Confirm with a real compare — issues are only for actual
+    // fast-forward content; same-sha rewrites are recorded silently.
+    try {
+      const cmp = await gh(`/repos/${repo}/compare/${snapshot}...HEAD`)
+      if (cmp.ahead_by > 0 || (cmp.files ?? []).length > 0) {
+        changed.push({ repo, from: snapshot, to: current, url: head.html_url })
+        entry.sha = current // ahead of the issue body so the manifest stays fresh
+      } else {
+        silent.push({ repo, from: snapshot, to: current })
+        entry.sha = current
+      }
+    } catch {
+      // compare unavailable (renamed repo, deleted branch) — fall back to the
+      // historical behaviour so a real move never slips through unnoticed
+      changed.push({ repo, from: snapshot, to: current, url: head.html_url })
+      entry.sha = current
     }
   } catch (e) {
     console.error(`check failed for ${repo}: ${e.message}`)
@@ -82,6 +102,27 @@ for (const c of changed) {
   } catch (e) {
     console.error(`failed to open issue for ${c.repo}: ${e.message}`)
   }
+}
+
+// ---- persist snapshot writes ----
+// Silent bumps (force-push churn with an identical tree) and real moves both
+// update the manifest here, so tomorrow's run compares against the truth
+// instead of re-alarming on the same reflog noise.
+try {
+  const root = join(here, "..")
+  writeFileSync(join(root, "upstream.json"), JSON.stringify(manifest, null, 2) + "\n")
+  const dirty = execFileSync("git", ["status", "--porcelain", "upstream.json"], { cwd: root }).toString().trim()
+  if (dirty) {
+    const names = [...changed, ...silent].map((c) => `${c.repo.split("/")[0]}→${c.to.slice(0, 7)}`).join(", ")
+    execFileSync("git", ["config", "user.name", "upstream-watch-bot"], { cwd: root })
+    execFileSync("git", ["config", "user.email", "actions@users.noreply.github.com"], { cwd: root })
+    execFileSync("git", ["add", "upstream.json"], { cwd: root })
+    execFileSync("git", ["commit", "-m", `upstream: snapshot refresh (${names || "no-change"}) [skip ci]`], { cwd: root })
+    execFileSync("git", ["push"], { cwd: root })
+    console.log(`snapshot committed: ${names}`)
+  }
+} catch (e) {
+  console.error(`snapshot persist skipped: ${e.message}`)
 }
 
 console.log(
