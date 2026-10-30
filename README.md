@@ -48,13 +48,13 @@ Do you run 5-7 chat sessions at once and lose track of which model is busy and w
 ```powershell
 # Windows
 New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.config\opencode\plugins\model-badges" | Out-Null
-Copy-Item index.ts, lib.ts, package.json "$env:USERPROFILE\.config\opencode\plugins\model-badges\"
+Copy-Item index.ts, lib.ts, autobg.ts, package.json "$env:USERPROFILE\.config\opencode\plugins\model-badges\"
 ```
 
 ```bash
 # macOS / Linux
 mkdir -p ~/.config/opencode/plugins/model-badges
-cp index.ts package.json ~/.config/opencode/plugins/model-badges/
+cp index.ts lib.ts autobg.ts package.json ~/.config/opencode/plugins/model-badges/
 ```
 
 **Option B — config reference** (add to your `opencode.jsonc`):
@@ -82,6 +82,21 @@ cp index.ts package.json ~/.config/opencode/plugins/model-badges/
 - **Stuck session detection** — a session building for 10 minutes keeps its `●` on the same model (tool-call aware).
 - **Fair model choice** — when opening a new session, pick a model that is not already overloaded.
 - **Live status board** — the model picker doubles as a dashboard; no separate monitoring tool needed.
+- **AutoBG hands-free** — a 4-minute build unmanned at 2 min keeps running in background with a visible countdown — the foreground stays yours.
+
+---
+
+## 🛰️ AutoBG — long sessions move themselves to background (v0.4.2)
+
+A session whose **tool call** (`bash` / scripts / MCP) keeps the foreground blocked longer than **2 minutes** is moved to background automatically — exactly what Ctrl+B does, exactly when you'd have wanted to press it:
+
+- **T-30s:** one toast — `AutoBG: 30s — "bash" moves to background automatically` (you see it coming)
+- **T=0:** the session runs the same operation Ctrl+B runs (`POST /api/session/{id}/background`) + `AutoBG: moved to background (ran 2m01s)` — and the tool **keeps running** in background (backgrounding never kills tools, that's the engine's own contract)
+- **Scope is tools-only:** a model thinking/writing for 10 minutes is never touched — only open tool calls count (`session.tool.input.started → success/failed` on both v1 and v2 event vocabularies)
+- **Won't touch:** subagent children (`parentID`, #12 guard), sessions not yet visible in the model map, already-ended tools (<120s), and one-shot per session turn (turn end re-arms it)
+- **10-minute zombie cap:** a tool whose end event was missed stands down silently instead of firing on a stale clock
+
+Threshold lives at the top of `autobg.ts` (`THRESHOLD_MS = 120_000`, `WARN_BEFORE_MS = 30_000`). If your OpenCode build removed the client toast route, the countdown falls back to `debug.log` and the background move still happens.
 
 ---
 

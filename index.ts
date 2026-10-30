@@ -43,6 +43,7 @@
 
 import { Plugin } from "@opencode/plugin"
 import { countRunningModels, pickBadge, stripBadge } from "./lib.ts"
+import { createAutoBg } from "./autobg.ts"
 
 const MAP_REFRESH_DEBOUNCE_MS = 8_000
 const STATUS_DEBOUNCE_MS = 500
@@ -254,6 +255,58 @@ export default Plugin.define({
       if (stale) recomputeRunning()
     }, 60_000)
 
+    // ---- AutoBG: auto-move sessions whose tool runs cross 2 minutes ----
+    // Countdown UX is toast checkpoints (engine owns the statusbar hint line,
+    // so "AutoBG: Ns left" INSIDE that hint would need an engine PR).
+    //   T-30s: toast once;  T=0: POST /api/session/{id}/background + toast.
+    // Model-chat-only runs never fire (no open tool call => no tracker entry).
+    const bgToast = async (message: string, variant: "info" | "success" | "warning" | "error" = "info") => {
+      try {
+        const c = ctx as { client?: { tui?: { showToast?: (b: object) => Promise<unknown> } } }
+        if (typeof c.client?.tui?.showToast === "function") {
+          await c.client.tui.showToast({ body: { message, variant, title: "AutoBG" } })
+        } else {
+          // v2 client SDKs dropped the tui toast route (POST /tui/toast gives
+          // 405 on live engines, /api/tui/toast 404) — the background move
+          // still happens; only the visual skips silently.
+          dbg(`autobg toast unavailable (${variant}): ${message}`)
+        }
+      } catch {}
+    }
+    const postBackground = async (sid: string) => {
+      const c = ctx as { client?: { session?: { background?: (b: object) => Promise<unknown> } } }
+      if (typeof c.client?.session?.background === "function") {
+        return c.client.session.background({ sessionID: sid })
+      }
+      // Raw v2 route — the exact operation behind Ctrl+B:
+      // POST /api/session/{id}/background -> 204 (promise/generated/client.ts)
+      const fs = await import("node:fs")
+      const os = await import("node:os")
+      const path = await import("node:path")
+      let url = ""
+      let password = ""
+      for (const p of [
+        path.join(os.homedir(), ".local", "state", "opencode", "service.json"),
+        path.join(os.homedir(), ".config", "opencode", "service.json"),
+      ]) {
+        try {
+          const j = JSON.parse(fs.readFileSync(p, "utf8")) as { url?: string; password?: string }
+          if (!url && j.url) url = j.url
+          if (!password && j.password) password = j.password
+        } catch {}
+      }
+      if (!url || !password) throw new Error("service.json discovery failed")
+      const auth = "Basic " + Buffer.from("opencode:" + password).toString("base64")
+      const res = await fetch(`${url}/api/session/${encodeURIComponent(sid)}/background`, {
+        method: "POST",
+        headers: { Authorization: auth },
+      })
+      if (!res.ok) throw new Error(`background HTTP ${res.status}`)
+    }
+    const autoBg = createAutoBg({ toast: bgToast, background: postBackground, dbg })
+    // 1s granularity keeps the "30s left" checkpoint honest
+    const autoBgPoll = setInterval(() => autoBg.poll(), 1_000)
+
     // ---- session bookkeeping helpers (shared by v1 and v2 event paths) ----
     // No leaks: drop all per-session state for deleted sessions.
     const forgetSession = (sid: string) => {
@@ -263,6 +316,7 @@ export default Plugin.define({
       statusRetry.delete(sid)
       statusKnown.delete(sid)
       retryMark.delete(sid)
+      autoBg.clear(sid)
     }
     // session.model.* — v1 frame: data.model{providerID, id}; v2 frame:
     // session.model.selected { model, previous }. One matcher covers both,
@@ -310,13 +364,17 @@ export default Plugin.define({
           return
         }
         // ---- tool lifecycle (BEFORE GEN_RE: session.tool.* matches both) ----
+        // v1 frames name the call `toolCallID`; v2's ToolBase names it `id`.
+        // Resolving both here keeps the v2 dedupe (called + input.started of
+        // one call collapse onto one key) and feeds AutoBG the same identity.
         if (TOOL_END_RE.test(type)) {
-          const tcid = data.toolCallID
+          const tcid = typeof data.toolCallID === "string" ? data.toolCallID : typeof data.id === "string" ? data.id : undefined
           const open = toolBusy.get(sid)
           if (open) {
             if (typeof tcid === "string") open.delete(tcid)
             else if (open.size > 0) open.delete([...open.keys()][open.size - 1])
           }
+          autoBg.end(sid, tcid)
           lastActivity.set(sid, Date.now())
           dbg(`toolEv end ${type} sid=${sid} open=${open?.size ?? 0}`)
           recomputeRunning()
@@ -324,7 +382,7 @@ export default Plugin.define({
           return
         }
         if (TOOL_START_RE.test(type)) {
-          const tcid = data.toolCallID
+          const tcid = typeof data.toolCallID === "string" ? data.toolCallID : typeof data.id === "string" ? data.id : undefined
           let open = toolBusy.get(sid)
           if (!open) {
             open = new Map<string, number>()
@@ -336,6 +394,11 @@ export default Plugin.define({
           open.set(key, Date.now())
           statusKnown.delete(sid) // an open tool OVERRIDES any stale idle status
           statusRetry.delete(sid) // a session executing tools is not rate-limited
+          // AutoBG only touches sessions visible in the model map: parentID
+          // children are never mapped (#12 — backgrounding a child would
+          // detach it from the parent's stream) and a session born seconds
+          // ago is skipped for this one call — later tool calls catch up.
+          if (sessionModels.has(sid)) autoBg.start(sid, key, data.name ?? data.tool)
           lastActivity.set(sid, Date.now())
           dbg(`toolEv start ${type} sid=${sid} open=${open.size}`)
           recomputeRunning()
@@ -374,6 +437,7 @@ export default Plugin.define({
             // idle: the retry policy gave up → ✕ mark (already set) survives
             statusBusy.delete(sid)
             statusRetry.delete(sid)
+            autoBg.clear(sid) // turn over — a fresh long run may fire again
           }
           dbg(`statusEv ${type} sid=${sid} st=${stType} next=${next ?? "-"}`)
           recomputeRunning()
@@ -410,6 +474,7 @@ export default Plugin.define({
             statusKnown.add(sid)
             statusBusy.delete(sid)
             statusRetry.delete(sid)
+            autoBg.clear(sid) // turn over — a fresh long run may fire again
           }
           dbg(`v2 execution ${type.slice(18)} sid=${sid}`)
           recomputeRunning()
@@ -500,6 +565,7 @@ export default Plugin.define({
       sse.abort()
       clearInterval(safety)
       clearInterval(sweeper)
+      clearInterval(autoBgPoll)
       if (timer) clearTimeout(timer)
     }
   },
