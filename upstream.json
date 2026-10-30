@@ -3,63 +3,126 @@
   "repositories": [
     {
       "repo": "azumag/opencode-rate-limit-fallback",
-      "sha": "51e7b48bd",
-      "adopted": ["fallback chain cycles", "cycle/stop modes", "doubling cooldown with cap", "cooldown persistence", "toast notifications", "retry-attempt threshold"]
+      "sha": "51e7b48bd1",
+      "adopted": [
+        "fallback chain cycles",
+        "cycle/stop modes",
+        "doubling cooldown with cap",
+        "cooldown persistence",
+        "toast notifications",
+        "retry-attempt threshold"
+      ],
+      "lastSeen": "51e7b48bd1",
+      "lastSeenDate": "2026-10-24T23:04:16Z"
     },
     {
       "repo": "HyeokjaeLee/opencode-auto-fallback",
       "sha": "ac15a1cd2c",
-      "adopted": ["immediate vs transient error classification", "max-retries before transients fall back", "logs via client.app.log"]
+      "adopted": [
+        "immediate vs transient error classification",
+        "max-retries before transients fall back",
+        "logs via client.app.log"
+      ],
+      "lastSeen": "ac15a1cd2c",
+      "lastSeenDate": "2026-10-18T17:01:54Z"
     },
     {
       "repo": "peva3/opencode-fallback",
       "sha": "9ac3ef46ff",
-      "adopted": ["replay last user message on fresh failure", "revert the incomplete assistant turn", "disconnect/retry loop awareness"]
+      "adopted": [
+        "replay last user message on fresh failure",
+        "revert the incomplete assistant turn",
+        "disconnect/retry loop awareness"
+      ],
+      "lastSeen": "9ac3ef46ff",
+      "lastSeenDate": "2026-03-16T03:33:07Z"
     },
     {
       "repo": "zaplakhov/opencode-rate-limit",
       "sha": "ed466ddc7c",
-      "adopted": ["keep-the-flow switching without context loss"]
+      "adopted": [
+        "keep-the-flow switching without context loss"
+      ],
+      "lastSeen": "ed466ddc7c",
+      "lastSeenDate": "2026-02-16T08:41:46Z"
     },
     {
       "repo": "renjfk/opencode-model-fallback",
-      "sha": "f79c895bb3",
-      "adopted": ["mid-run continue message instead of replay", "persistent global model cooldown state"]
+      "sha": "fa53a93529",
+      "adopted": [
+        "mid-run continue message instead of replay",
+        "persistent global model cooldown state"
+      ],
+      "lastSeen": "fa53a93529",
+      "lastSeenDate": "2026-10-29T21:15:34Z"
     },
     {
       "repo": "ChakornK/opencode-nim-rotator",
       "sha": "178645f32b",
-      "adopted": ["(deferred) api-key rotation", "(deferred) latency benchmarking"]
+      "adopted": [
+        "(deferred) api-key rotation",
+        "(deferred) latency benchmarking"
+      ],
+      "lastSeen": "178645f32b",
+      "lastSeenDate": "2026-08-28T09:48:12Z"
     },
     {
       "repo": "farhanic017/auto-model-switcher",
       "sha": "cdb762620a",
-      "adopted": ["(deferred) auto-discovery of configured models", "(deferred) health scoring"]
+      "adopted": [
+        "(deferred) auto-discovery of configured models",
+        "(deferred) health scoring"
+      ],
+      "lastSeen": "cdb762620a",
+      "lastSeenDate": "2026-06-07T17:33:59Z"
     },
     {
       "repo": "owjs3901/opencode-auth-load-balancer",
       "sha": "434b263a2d",
-      "adopted": ["(deferred) weighted account balancing", "(deferred) proactive pre-limit switching"]
+      "adopted": [
+        "(deferred) weighted account balancing",
+        "(deferred) proactive pre-limit switching"
+      ],
+      "lastSeen": "434b263a2d",
+      "lastSeenDate": "2026-10-20T13:40:13Z"
     },
     {
       "repo": "Gooseware/opencode-antigravity-autopilot",
       "sha": "739b86f5cf",
-      "adopted": ["(deferred) llm-facing quota tools"]
+      "adopted": [
+        "(deferred) llm-facing quota tools"
+      ],
+      "lastSeen": "739b86f5cf",
+      "lastSeenDate": "2026-01-30T07:05:47Z"
     },
     {
       "repo": "Inokinoki/opencode-quota",
       "sha": "3c0b43a2bb",
-      "adopted": ["(deferred) quota toasts"]
+      "adopted": [
+        "(deferred) quota toasts"
+      ],
+      "lastSeen": "3c0b43a2bb",
+      "lastSeenDate": "2026-04-01T23:00:39Z"
     },
     {
       "repo": "Gl1ch5/opencode-gemini-auth-multi-account",
       "sha": "60fc65f633",
-      "adopted": ["(deferred) multi-account exhaustion tracking", "not applicable — provider-oauth specific"]
+      "adopted": [
+        "(deferred) multi-account exhaustion tracking",
+        "not applicable — provider-oauth specific"
+      ],
+      "lastSeen": "60fc65f633",
+      "lastSeenDate": "2026-05-02T04:19:04Z"
     },
     {
       "repo": "NoeFabris/opencode-antigravity-auth",
       "sha": "05e600ad6c",
-      "adopted": ["not applicable — oauth auth surface", "reference for free-tier model ids"]
+      "adopted": [
+        "not applicable — oauth auth surface",
+        "reference for free-tier model ids"
+      ],
+      "lastSeen": "05e600ad6c",
+      "lastSeenDate": "2026-10-27T17:24:50Z"
     }
   ]
 }
