@@ -14,7 +14,16 @@ import { join } from "node:path"
 register("./fixtures/plugin-loader.js", import.meta.url)
 const { default: plugin } = await import("../index.ts")
 const { createAutoBg, AUTOBG } = await import("../autobg.ts")
-const flush = () => new Promise((resolve) => setImmediate(resolve))
+const flush = async () => {
+  // Deterministic drain: node 22's mocked tick() can end with plugin async
+  // work still pending in the microtask queue (postBackground's dynamic
+  // imports + fetch + toast chain). A single setImmediate was not enough —
+  // those continuations landed in the NEXT test's fetch mock. Drain
+  // microtasks, hop a macrotask, drain again.
+  for (let i = 0; i < 25; i++) await Promise.resolve()
+  await new Promise((resolve) => setImmediate(resolve))
+  for (let i = 0; i < 25; i++) await Promise.resolve()
+}
 
 const clockAt = (start = 1_700_000_000_000) => {
   let t = start
@@ -191,7 +200,7 @@ async function setup(t, list = [{ id: "s1", model: { providerID: "provider", id:
     await flush()
   }
   await tick(500)
-  return { emit, tick, bgCalls, toasts }
+  return { emit, tick, bgCalls, toasts, autoBgStats: ctx.autoBgStats }
 }
 
 test("integration: v2 long tool moves the session to background with both toasts (raw route)", async (t) => {

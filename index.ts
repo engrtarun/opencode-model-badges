@@ -86,20 +86,26 @@ let debugPath = ""
 export default Plugin.define({
   id: "model-badges",
   async setup(ctx) {
+    // Hoist node built-ins ONCE at the very top: NO dynamic import() may ever
+    // run inside a timer or event callback — under node 22's mocked event
+    // loop an import() issued from a timer callback never resolves (stalls),
+    // and in production the per-fire Promise.all just wastes microtasks.
+    const [fs, os, path] = await Promise.all([
+      import("node:fs"),
+      import("node:os"),
+      import("node:path"),
+    ])
     // Optional debug log (disabled silently if the directory can't be written)
     try {
-      const os = await import("node:os")
-      const pathMod = await import("node:path")
-      debugPath = pathMod.join(os.homedir(), ".config", "opencode", "plugins", "model-badges", "debug.log")
+      debugPath = path.join(os.homedir(), ".config", "opencode", "plugins", "model-badges", "debug.log")
     } catch {}
     const dbg = (msg: string) => {
       if (!debugPath) return
-      import("node:fs")
-        .then((fs) => fs.appendFileSync(debugPath, `${new Date().toISOString()} ${msg}\n`))
-        .catch(() => {})
+      try {
+        fs.appendFileSync(debugPath, `${new Date().toISOString()} ${msg}\n`)
+      } catch {}
     }
     try {
-      const fs = await import("node:fs")
       fs.writeFileSync(debugPath, "=== model-badges setup ===\n")
     } catch {}
 
@@ -255,6 +261,14 @@ export default Plugin.define({
       if (stale) recomputeRunning()
     }, 60_000)
 
+    // service.json discovery candidates — computed once with the hoisted
+    // built-ins; OPENCODE_SERVICE_JSON (first entry) overrides the standard
+    // locations, e.g. for machines running more than one opencode instance.
+    const serviceCandidatePaths = [
+      ...(process.env.OPENCODE_SERVICE_JSON ? [process.env.OPENCODE_SERVICE_JSON] : []),
+      path.join(os.homedir(), ".local", "state", "opencode", "service.json"),
+      path.join(os.homedir(), ".config", "opencode", "service.json"),
+    ]
     // ---- AutoBG: auto-move sessions whose tool runs cross 2 minutes ----
     // Countdown UX is toast checkpoints (engine owns the statusbar hint line,
     // so "AutoBG: Ns left" INSIDE that hint would need an engine PR).
@@ -278,27 +292,21 @@ export default Plugin.define({
       if (typeof c.client?.session?.background === "function") {
         return c.client.session.background({ sessionID: sid })
       }
-    // Raw v2 route — the exact operation behind Ctrl+B:
-    // POST /api/session/{id}/background -> 204 (promise/generated/client.ts)
-    // OPENCODE_SERVICE_JSON overrides the discovery files — for setups that
-    // run more than one opencode instance point it at the target's copy.
-    const fs = await import("node:fs")
-    const os = await import("node:os")
-    const path = await import("node:path")
-    let url = ""
-    let password = ""
-    for (const p of [
-      process.env.OPENCODE_SERVICE_JSON || "",
-      path.join(os.homedir(), ".local", "state", "opencode", "service.json"),
-      path.join(os.homedir(), ".config", "opencode", "service.json"),
-    ]) {
-      if (!p) continue
-      try {
-        const j = JSON.parse(fs.readFileSync(p, "utf8")) as { url?: string; password?: string }
-        if (!url && j.url) url = j.url
-        if (!password && j.password) password = j.password
-      } catch {}
-    }
+      // Raw v2 route — the exact operation behind Ctrl+B:
+      // POST /api/session/{id}/background -> 204 (promise/generated/client.ts)
+      // IMPORT-FREE at fire time (built-ins are hoisted at setup — see
+      // serviceCandidatePaths): node 22's mocked event loop stalls an
+      // import() issued from inside a timer callback forever; production
+      // also saves the microtasks on every fire.
+      let url = ""
+      let password = ""
+      for (const p of serviceCandidatePaths) {
+        try {
+          const j = JSON.parse(fs.readFileSync(p, "utf8")) as { url?: string; password?: string }
+          if (!url && j.url) url = j.url
+          if (!password && j.password) password = j.password
+        } catch {}
+      }
       if (!url || !password) throw new Error("service.json discovery failed")
       const auth = "Basic " + Buffer.from("opencode:" + password).toString("base64")
       const res = await fetch(`${url}/api/session/${encodeURIComponent(sid)}/background`, {
@@ -308,6 +316,8 @@ export default Plugin.define({
       if (!res.ok) throw new Error(`background HTTP ${res.status}`)
     }
     const autoBg = createAutoBg({ toast: bgToast, background: postBackground, dbg })
+    // (test hook) lets the integration tests probe the tracker state directly
+    ;(ctx as { autoBgStats?: unknown }).autoBgStats = autoBg.stats
     // 1s granularity keeps the "30s left" checkpoint honest
     const autoBgPoll = setInterval(() => autoBg.poll(), 1_000)
 
@@ -518,15 +528,12 @@ export default Plugin.define({
     void (async () => {
       while (!sse.signal.aborted) {
         try {
-          const fs = await import("node:fs")
-          const os = await import("node:os")
-          const path = await import("node:path")
+          // IMPORT-FREE reconnection: built-ins + candidate paths come from
+          // the hoisted setup consts (no import() inside this loop — the
+          // same node 22 mocked-timer stall that hit the AutoBG fire).
           let url = ""
           let password = ""
-          for (const p of [
-            path.join(os.homedir(), ".local", "state", "opencode", "service.json"),
-            path.join(os.homedir(), ".config", "opencode", "service.json"),
-          ]) {
+          for (const p of serviceCandidatePaths) {
             try {
               const j = JSON.parse(fs.readFileSync(p, "utf8")) as { url?: string; password?: string }
               if (!url && j.url) url = j.url
