@@ -269,25 +269,86 @@ export default Plugin.define({
       path.join(os.homedir(), ".local", "state", "opencode", "service.json"),
       path.join(os.homedir(), ".config", "opencode", "service.json"),
     ]
-    // ---- AutoBG: auto-move sessions whose tool runs cross 2 minutes ----
+    // ---- AutoBG: auto-move sessions whose tool runs cross 1 minute ----
     // Countdown UX is toast checkpoints (engine owns the statusbar hint line,
     // so "AutoBG: Ns left" INSIDE that hint would need an engine PR).
-    //   T-30s: toast once;  T=0: POST /api/session/{id}/background + toast.
+    //   T-15s: toast once;  T=0: POST /api/session/{id}/background + toast.
     // Model-chat-only runs never fire (no open tool call => no tracker entry).
-    const bgToast = async (message: string, variant: "info" | "success" | "warning" | "error" = "info") => {
+    // One-time shape probe — where does THIS build hide its toast API? The
+    // keys land in debug.log so a future build's route is wired without
+    // re-reading engine sources.
+    const client = (ctx as { client?: Record<string, unknown> }).client
+    if (client && typeof client === "object") {
       try {
-        const c = ctx as { client?: { tui?: { showToast?: (b: object) => Promise<unknown> } } }
-        if (typeof c.client?.tui?.showToast === "function") {
-          await c.client.tui.showToast({ body: { message, variant, title: "AutoBG" } })
-        } else {
-          // v2 client SDKs dropped the tui toast route (POST /tui/toast gives
-          // 405 on live engines, /api/tui/toast 404) — the background move
-          // still happens; only the visual skips silently.
-          dbg(`autobg toast unavailable (${variant}): ${message}`)
+        dbg(`autobg client keys: ${Object.keys(client).join(",")}`)
+        const tuiShape = client.tui as Record<string, unknown> | undefined
+        if (tuiShape && typeof tuiShape === "object") {
+          dbg(`autobg client.tui keys: ${Object.keys(tuiShape).join(",")}`)
         }
       } catch {}
     }
+    const bgToast = async (message: string, variant: "info" | "success" | "warning" | "error" = "info") => {
+      // Duck across builds: SDKs have moved this route around (a live engine
+      // answered POST /tui/toast with 405, /api/tui/toast with 404) — try
+      // every known call-shape; when none exists the background move still
+      // happens and only the visual skips silently.
+      const c = ctx as {
+        client?: {
+          tui?: { showToast?: unknown; toast?: unknown; toastShow?: unknown }
+          toast?: unknown
+        }
+      }
+      const payload = { body: { message, variant, title: "AutoBG" } }
+      for (const fn of [c.client?.tui?.showToast, c.client?.tui?.toast, c.client?.tui?.toastShow, c.client?.toast]) {
+        if (typeof fn === "function") {
+          try {
+            await (fn as (b: object) => Promise<unknown>)(payload)
+            return
+          } catch {}
+        }
+      }
+      dbg(`autobg toast unavailable (${variant}): ${message}`)
+    }
+    // Cross-process fire lock: this machine often runs 6+ OpenCode processes,
+    // and every one of them watches the same SSE stream — without a lock each
+    // process fires its own POST. An "wx" exclusive create is atomic on NTFS:
+    // the first process wins, the rest stand down while the lock is fresh
+    // (<10s, plenty for one fire window). Locks are never hand-cleaned — the
+    // age check ages them out.
+    const AUTOBG_LOCK_MS = 10_000
+    const acquireFireLock = (sid: string): boolean => {
+      const lockFile = path.join(os.homedir(), ".config", "opencode", "plugins", "model-badges", `.autobg-fire-${sid}.lock`)
+      try {
+        const fd = fs.openSync(lockFile, "wx")
+        fs.writeSync(fd, String(Date.now()))
+        fs.closeSync(fd)
+        dbg(`autobg lock acquired sid=${sid.slice(0, 12)}`)
+        return true
+      } catch (e) {
+        if ((e as { code?: string }).code !== "EEXIST") {
+          // missing/unwritable dir — the move must never depend on the lock
+          dbg(`autobg lock unavailable (${(e as { code?: string }).code ?? String(e)}) — firing anyway`)
+          return true
+        }
+        try {
+          const age = Date.now() - fs.statSync(lockFile).mtimeMs
+          if (age < AUTOBG_LOCK_MS) {
+            dbg(`autobg lock held (age=${Math.round(age / 1000)}s) — another process fired first sid=${sid.slice(0, 12)}`)
+            return false
+          }
+          fs.writeFileSync(lockFile, String(Date.now())) // stale lock: take over
+          dbg(`autobg lock stale (age=${Math.round(age / 1000)}s) — took over sid=${sid.slice(0, 12)}`)
+          return true
+        } catch {
+          dbg("autobg lock stat failed — firing anyway")
+          return true
+        }
+      }
+    }
     const postBackground = async (sid: string) => {
+      // Lock first: a thrown "held" error keeps the success-toast silent —
+      // this process did NOT move the session, another one did.
+      if (!acquireFireLock(sid)) throw new Error("fire lock held by another process")
       const c = ctx as { client?: { session?: { background?: (b: object) => Promise<unknown> } } }
       if (typeof c.client?.session?.background === "function") {
         return c.client.session.background({ sessionID: sid })
@@ -318,7 +379,7 @@ export default Plugin.define({
     const autoBg = createAutoBg({ toast: bgToast, background: postBackground, dbg })
     // (test hook) lets the integration tests probe the tracker state directly
     ;(ctx as { autoBgStats?: unknown }).autoBgStats = autoBg.stats
-    // 1s granularity keeps the "30s left" checkpoint honest
+    // 1s granularity keeps the "15s left" checkpoint honest
     const autoBgPoll = setInterval(() => autoBg.poll(), 1_000)
 
     // ---- session bookkeeping helpers (shared by v1 and v2 event paths) ----
@@ -412,7 +473,15 @@ export default Plugin.define({
           // children are never mapped (#12 — backgrounding a child would
           // detach it from the parent's stream) and a session born seconds
           // ago is skipped for this one call — later tool calls catch up.
-          if (sessionModels.has(sid)) autoBg.start(sid, key, data.name ?? data.tool)
+          if (sessionModels.has(sid)) {
+            autoBg.start(sid, key, data.name ?? data.tool)
+          } else {
+            // subagent child or a session not yet mapped (#12 guard). This
+            // dbg line is the evidence trail for "it didn't fire" reports:
+            // a real foreground session should NEVER show up here more than
+            // for its first tool call.
+            dbg(`autobg skip unmapped sid=${sid.slice(0, 12)} (child or pre-map session)`)
+          }
           lastActivity.set(sid, Date.now())
           dbg(`toolEv start ${type} sid=${sid} open=${open.size}`)
           recomputeRunning()

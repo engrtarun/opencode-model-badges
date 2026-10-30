@@ -32,7 +32,7 @@ const clockAt = (start = 1_700_000_000_000) => {
 
 // ---- pure state machine ----------------------------------------------------
 
-test("autoBg warns once at T-30s and fires exactly one background request at 2 min", async () => {
+test("autoBg warns once at T-15s and fires exactly one background request at 1 min", async () => {
   const c = clockAt()
   const toasts = []
   let bgCalls = 0
@@ -42,21 +42,21 @@ test("autoBg warns once at T-30s and fires exactly one background request at 2 m
     background: async () => { bgCalls++ },
   })
   bg.start("s1", "c1", "bash")
-  for (let s = 1; s <= 89; s++) { c.advance(1_000); bg.poll() }
-  assert.deepEqual(bg.stats(), { open: 1, warned: 0, requested: 0 }, "no warn before T-30s")
-  c.advance(1_000); bg.poll() // 90s — exactly at the checkpoint
+  for (let s = 1; s <= 44; s++) { c.advance(1_000); bg.poll() }
+  assert.deepEqual(bg.stats(), { open: 1, warned: 0, requested: 0 }, "no warn before T-15s")
+  c.advance(1_000); bg.poll() // 45s — exactly at the checkpoint
   assert.equal(toasts.length, 1)
-  assert.match(toasts[0].message, /AutoBG: 30s — "bash"/)
+  assert.match(toasts[0].message, /AutoBG: 15s — "bash"/)
   assert.equal(toasts[0].variant, "info")
-  for (let s = 0; s < 29; s++) { c.advance(1_000); bg.poll() }
+  for (let s = 0; s < 14; s++) { c.advance(1_000); bg.poll() }
   assert.equal(toasts.length, 1, "warn fires once, never re-sends")
-  c.advance(1_000); bg.poll() // 120s — fire
+  c.advance(1_000); bg.poll() // 60s — fire
   await flush()
   c.advance(5_000); bg.poll() // would fire again without the one-shot guard
   await flush()
   assert.equal(bgCalls, 1, "exactly one background request per session turn")
   assert.equal(toasts.length, 2)
-  assert.match(toasts[1].message, /AutoBG: moved to background \(ran 2m\d\d? \w*\)|moved to background \(ran 2m/ )
+  assert.match(toasts[1].message, /moved to background \(ran 1m/)
   assert.equal(toasts[1].variant, "success")
 })
 
@@ -69,13 +69,13 @@ test("a tool that ends before the threshold never fires and resets its own clock
     background: async () => { bgCalls++ },
   })
   bg.start("s1", "c1", "bash")
-  c.advance(90_000); bg.poll() // warned
+  c.advance(40_000); bg.poll() // under the checkpoint
   bg.end("s1", "c1")
   for (let s = 0; s < 120; s++) { c.advance(1_000); bg.poll() }
   assert.equal(bgCalls, 0, "ended call cannot fire anything")
   // a later call starts its own clock from zero
   bg.start("s1", "c2", "edit")
-  for (let s = 0; s < 119; s++) { c.advance(1_000); bg.poll() }
+  for (let s = 0; s < 59; s++) { c.advance(1_000); bg.poll() }
   assert.equal(bgCalls, 0)
   c.advance(1_000); bg.poll()
   await flush()
@@ -91,10 +91,10 @@ test("the oldest open call drives the trigger; short interleaved calls cannot de
     background: async () => { bgCalls++ },
   })
   bg.start("s1", "c1", "bash") // the long one
-  c.advance(60_000)
+  c.advance(30_000)
   bg.start("s1", "c2", "read") // a quick call inside the same turn
   bg.end("s1", "c2")
-  c.advance(59_000); bg.poll() // 119s on c1
+  c.advance(29_000); bg.poll() // 59s on c1
   assert.equal(bgCalls, 0)
   c.advance(1_000); bg.poll()
   await flush()
@@ -110,12 +110,12 @@ test("execution end (clear) re-arms the trigger for the NEXT long run", async ()
     background: async () => { bgCalls++ },
   })
   bg.start("s1", "c1", "bash")
-  c.advance(125_000); bg.poll()
+  c.advance(61_000); bg.poll() // past the 1-minute threshold
   await flush()
   assert.equal(bgCalls, 1)
   bg.clear("s1") // session.execution.succeeded / idle / deleted
   bg.start("s1", "c2", "bash")
-  c.advance(119_000); bg.poll()
+  c.advance(59_000); bg.poll()
   assert.equal(bgCalls, 1, "second run still under threshold")
   c.advance(1_000); bg.poll()
   await flush()
@@ -206,16 +206,16 @@ async function setup(t, list = [{ id: "s1", model: { providerID: "provider", id:
 test("integration: v2 long tool moves the session to background with both toasts (raw route)", async (t) => {
   const h = await setup(t)
   await h.emit("session.tool.input.started", { sessionID: "s1", assistantMessageID: "m1", id: "c1", name: "bash" })
-  await h.tick(89_000)
-  assert.equal(h.bgCalls.length, 0, "silent under 90s")
-  assert.deepEqual(h.toasts, [], "no warn under T-30s")
+  await h.tick(44_000)
+  assert.equal(h.bgCalls.length, 0, "silent under 45s")
+  assert.deepEqual(h.toasts, [], "no warn under T-15s")
   await h.tick(1_000)
-  assert.equal(h.toasts.filter((x) => x.message.includes("30s")).length, 1, "warned exactly once at 90s")
-  await h.tick(29_000)
-  assert.equal(h.bgCalls.length, 0, "119s: not yet")
+  assert.equal(h.toasts.filter((x) => x.message.includes("15s")).length, 1, "warned exactly once at 45s")
+  await h.tick(14_000)
+  assert.equal(h.bgCalls.length, 0, "59s: not yet")
   await h.tick(2_000)
   assert.deepEqual(h.bgCalls, ["http://opencode.test/api/session/s1/background"])
-  assert.equal(h.toasts.filter((x) => x.variant === "success" && /moved to background \(ran 2m/.test(x.message)).length, 1)
+  assert.equal(h.toasts.filter((x) => x.variant === "success" && /moved to background \(ran 1m/.test(x.message)).length, 1)
   assert.equal(h.toasts.filter((x) => x.title === "AutoBG").length, 2)
   // idempotent: no more requests while the call stays open
   await h.tick(5_000)
@@ -224,7 +224,7 @@ test("integration: v2 long tool moves the session to background with both toasts
   await h.emit("session.tool.success", { sessionID: "s1", assistantMessageID: "m1", id: "c1", content: [{ type: "text", text: "ok" }], executed: true })
   await h.tick(500)
   await h.emit("session.tool.input.started", { sessionID: "s1", assistantMessageID: "m2", id: "c2", name: "bash" })
-  await h.tick(120_000)
+  await h.tick(60_000)
   assert.equal(h.bgCalls.length, 2, "re-armed across turns")
 })
 
@@ -234,12 +234,45 @@ test("integration: model-chat-only runs and sub-2-min tools never background (#A
   await h.emit("session.execution.started", { sessionID: "s1" })
   await h.tick(180_000)
   assert.equal(h.bgCalls.length, 0, "model runs are never auto-backgrounded")
-  // a tool that finishes quickly
+  // a tool that finishes well under the 1-minute threshold
   await h.emit("session.tool.input.started", { sessionID: "s1", assistantMessageID: "m1", id: "c1", name: "read" })
   await h.tick(30_000)
   await h.emit("session.tool.success", { sessionID: "s1", assistantMessageID: "m1", id: "c1", content: [{ type: "text", text: "ok" }], executed: true })
   await h.tick(180_000)
   assert.equal(h.bgCalls.length, 0)
+})
+
+test("integration: a fresh fire-lock held by another process suppresses THIS process's move", async (t) => {
+  const h = await setup(t)
+  // simulate a sibling OpenCode process that fired its own move 3s ago:
+  // it OWNED the "wx" create (we still hold ours? no — ours loses with EEXIST)
+  // and its lock is younger than 10s.
+  globalThis.__abgLock = { held: true, existingAgeMs: 3_000 }
+  t.after(() => { delete globalThis.__abgLock })
+  await h.emit("session.tool.input.started", { sessionID: "s1", assistantMessageID: "m1", id: "c1", name: "bash" })
+  await h.tick(60_000)
+  assert.equal(h.bgCalls.length, 0, "held lock suppresses the raw POST")
+  assert.equal(
+    h.toasts.filter((x) => x.variant === "success").length, 0,
+    "no success toast when this process did NOT move the session",
+  )
+  // the turn is still armed-for-nothing: requested is set, and once the tool
+  // ends the state resets (end -> map empty), so nothing leaks into a new turn
+  await h.emit("session.tool.success", { sessionID: "s1", assistantMessageID: "m1", id: "c1", content: [{ type: "text", text: "ok" }], executed: true })
+  await h.tick(500)
+  assert.deepEqual(h.autoBgStats?.(), { open: 0, warned: 0, requested: 0 }, "turn state fully reset after the suppressed fire")
+})
+
+test("integration: a STALE fire-lock (>10s) is taken over and the move happens", async (t) => {
+  const h = await setup(t)
+  // sibling fired 15s+ ago (its clock is long gone) — this process must
+  // not be blocked forever by an abandoned lock file on disk.
+  globalThis.__abgLock = { held: true, existingAgeMs: 15_000 }
+  t.after(() => { delete globalThis.__abgLock })
+  await h.emit("session.tool.input.started", { sessionID: "s1", assistantMessageID: "m1", id: "c1", name: "bash" })
+  await h.tick(60_000)
+  assert.deepEqual(h.bgCalls, ["http://opencode.test/api/session/s1/background"], "stale lock does not block the move")
+  assert.equal(h.toasts.filter((x) => x.variant === "success").length, 1)
 })
 
 test("integration: subagent children and unknown sessions are skipped (#12 guard)", async (t) => {

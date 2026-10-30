@@ -3,13 +3,13 @@
 // ---------------------------------------------------------------------------
 //
 // What it does:
-//   A session whose TOOL calls keep it blocked for longer than 2 minutes would
+//   A session whose TOOL calls keep it blocked for longer than 1 minute would
 //   normally occupy the foreground until the user presses Ctrl+B. This module
 //   automates exactly that:
 //
-//     T-30s  toast "AutoBG: 30s — `bash` will move to background"   (once)
+//     T-15s  toast "AutoBG: 15s — `bash` will move to background"   (once)
 //      T=0   POST /api/session/{sid}/background  (the Ctrl+B operation)
-//            toast "AutoBG: moved to background (ran 2m01s)"          (once)
+//            toast "AutoBG: moved to background (ran 1m01s)"          (once)
 //
 // What it NEVER touches:
 //   - Model-chat-only runs (no open tool call => no tracker entry => no fire).
@@ -34,8 +34,11 @@
 //     short tools interleave still reaches the threshold; three consecutive
 //     60s calls never will (each call's own clock resets on its end event).
 
-const THRESHOLD_MS = 120_000
-const WARN_BEFORE_MS = 30_000
+// 1 minute: users run downloads/builds/curl that live 3-6 min; 2 minutes was
+// too patient — real long runs (and their proof at warn-checkpoint time) sat
+// around half dead in the foreground. 1min fires early enough to matter.
+const THRESHOLD_MS = 60_000
+const WARN_BEFORE_MS = 15_000
 // A tool that never reported its end after this long is considered a missed
 // event (the engine kills tools eventually); stop threatening and drop it.
 const CAP_MS = 10 * 60_000

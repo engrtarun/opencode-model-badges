@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![OpenCode](https://img.shields.io/badge/OpenCode-plugin-7c3aed.svg)](https://opencode.ai)
-[![Version](https://img.shields.io/badge/version-0.3.1-green.svg)](https://github.com/engrtarun/opencode-model-badges/releases)
+[![Version](https://img.shields.io/badge/version-0.4.3-green.svg)](https://github.com/engrtarun/opencode-model-badges/releases)
 [![tests](https://github.com/engrtarun/opencode-model-badges/actions/workflows/test.yml/badge.svg)](https://github.com/engrtarun/opencode-model-badges/actions/workflows/test.yml)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.6-green.svg)](package.json)
 [![Zero-child-process](https://img.shields.io/badge/child%20processes-0-brightgreen.svg)](#-how-it-works)
@@ -86,17 +86,18 @@ cp index.ts lib.ts autobg.ts package.json ~/.config/opencode/plugins/model-badge
 
 ---
 
-## 🛰️ AutoBG — long sessions move themselves to background (v0.4.2)
+## 🛰️ AutoBG — long sessions move themselves to background (v0.4.2, retimed in v0.4.3)
 
-A session whose **tool call** (`bash` / scripts / MCP) keeps the foreground blocked longer than **2 minutes** is moved to background automatically — exactly what Ctrl+B does, exactly when you'd have wanted to press it:
+A session whose **tool call** (`bash` / scripts / MCP) keeps the foreground blocked longer than **1 minute** is moved to background automatically — exactly what Ctrl+B does, exactly when you'd have wanted to press it:
 
-- **T-30s:** one toast — `AutoBG: 30s — "bash" moves to background automatically` (you see it coming)
-- **T=0:** the session runs the same operation Ctrl+B runs (`POST /api/session/{id}/background`) + `AutoBG: moved to background (ran 2m01s)` — and the tool **keeps running** in background (backgrounding never kills tools, that's the engine's own contract)
+- **T-15s:** one toast — `AutoBG: 15s — "bash" moves to background automatically` (you see it coming)
+- **T=0:** the session runs the same operation Ctrl+B runs (`POST /api/session/{id}/background`) + `AutoBG: moved to background (ran 1m01s)` — and the tool **keeps running** in background (backgrounding never kills tools, that's the engine's own contract)
 - **Scope is tools-only:** a model thinking/writing for 10 minutes is never touched — only open tool calls count (`session.tool.input.started → success/failed` on both v1 and v2 event vocabularies)
-- **Won't touch:** subagent children (`parentID`, #12 guard), sessions not yet visible in the model map, already-ended tools (<120s), and one-shot per session turn (turn end re-arms it)
+- **Won't touch:** subagent children (`parentID`, #12 guard), sessions not yet visible in the model map, already-ended tools (<60s), and one-shot per session turn (turn end re-arms it)
+- **Cross-process safe (v0.4.3):** running several OpenCode processes at once? An NTFS-atomic lock file (`.autobg-fire-<sid>.lock`, 10s TTL) means only the FIRST process posts the move and shows the toast — the rest stand down
 - **10-minute zombie cap:** a tool whose end event was missed stands down silently instead of firing on a stale clock
 
-Threshold lives at the top of `autobg.ts` (`THRESHOLD_MS = 120_000`, `WARN_BEFORE_MS = 30_000`). If your OpenCode build removed the client toast route, the countdown falls back to `debug.log` and the background move still happens.
+Threshold lives at the top of `autobg.ts` (`THRESHOLD_MS = 60_000`, `WARN_BEFORE_MS = 15_000`). If your OpenCode build removed the client toast route, the countdown falls back to `debug.log` (which also logs the one-time client-shape probe: `autobg client keys …`) and the background move still happens.
 
 ---
 

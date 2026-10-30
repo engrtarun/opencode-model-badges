@@ -1,6 +1,6 @@
 {
   "name": "opencode-model-badges",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "scripts": {
     "test": "node --experimental-strip-types --test \"test/*.test.js\""
   },
