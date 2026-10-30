@@ -1,6 +1,9 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { register } from "node:module"
+import { writeFileSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 // AutoBG (autobg.ts + index.ts wiring): a tool call that keeps a session
 // blocked for >= 2 min is auto-moved to background (the Ctrl+B operation,
@@ -155,6 +158,13 @@ async function setup(t, list = [{ id: "s1", model: { providerID: "provider", id:
   const models = new Map([
     ["provider/a", { providerID: "provider", id: "a", name: "A" }],
   ])
+  // CI runners have no real ~/.config/opencode/service.json — point the
+  // raw background POST at a fixture copy through the plugin's own
+  // OPENCODE_SERVICE_JSON override (the multi-instance escape hatch).
+  const svcFile = join(tmpdir(), "opencode-test-service.json")
+  writeFileSync(svcFile, JSON.stringify({ url: "http://opencode.test", password: "t" }))
+  process.env.OPENCODE_SERVICE_JSON = svcFile
+  t.after(() => { delete process.env.OPENCODE_SERVICE_JSON; try { rmSync(svcFile) } catch {} })
   let transform
   const toasts = []
   // client carries ONLY the toast — with no duck-typed session.background the

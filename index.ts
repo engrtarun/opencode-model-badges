@@ -278,23 +278,27 @@ export default Plugin.define({
       if (typeof c.client?.session?.background === "function") {
         return c.client.session.background({ sessionID: sid })
       }
-      // Raw v2 route — the exact operation behind Ctrl+B:
-      // POST /api/session/{id}/background -> 204 (promise/generated/client.ts)
-      const fs = await import("node:fs")
-      const os = await import("node:os")
-      const path = await import("node:path")
-      let url = ""
-      let password = ""
-      for (const p of [
-        path.join(os.homedir(), ".local", "state", "opencode", "service.json"),
-        path.join(os.homedir(), ".config", "opencode", "service.json"),
-      ]) {
-        try {
-          const j = JSON.parse(fs.readFileSync(p, "utf8")) as { url?: string; password?: string }
-          if (!url && j.url) url = j.url
-          if (!password && j.password) password = j.password
-        } catch {}
-      }
+    // Raw v2 route — the exact operation behind Ctrl+B:
+    // POST /api/session/{id}/background -> 204 (promise/generated/client.ts)
+    // OPENCODE_SERVICE_JSON overrides the discovery files — for setups that
+    // run more than one opencode instance point it at the target's copy.
+    const fs = await import("node:fs")
+    const os = await import("node:os")
+    const path = await import("node:path")
+    let url = ""
+    let password = ""
+    for (const p of [
+      process.env.OPENCODE_SERVICE_JSON || "",
+      path.join(os.homedir(), ".local", "state", "opencode", "service.json"),
+      path.join(os.homedir(), ".config", "opencode", "service.json"),
+    ]) {
+      if (!p) continue
+      try {
+        const j = JSON.parse(fs.readFileSync(p, "utf8")) as { url?: string; password?: string }
+        if (!url && j.url) url = j.url
+        if (!password && j.password) password = j.password
+      } catch {}
+    }
       if (!url || !password) throw new Error("service.json discovery failed")
       const auth = "Basic " + Buffer.from("opencode:" + password).toString("base64")
       const res = await fetch(`${url}/api/session/${encodeURIComponent(sid)}/background`, {
