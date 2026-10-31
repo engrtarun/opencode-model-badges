@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>opencode-model-badges — see which model is free, lose nothing to the foreground</title>
+  <meta name="description" content="A tiny zero-dependency OpenCode plugin: live running/retrying/exhausted badges right inside your model picker, plus AutoBG — sessions whose tools run over a minute move themselves to background." />
+  <meta property="og:title" content="opencode-model-badges" />
+  <meta property="og:description" content="Live badges on every model name + AutoBG: long sessions move themselves to background. Zero dependencies, nothing to configure." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://engrtarun.github.io/opencode-model-badges/" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='9' fill='%234ade80'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #0b0e11;
+      --surface: #131720;
+      --border: #262c33;
+      --text: #e6e9ec;
+      --muted: #94a0aa;
+      --ok: #4ade80;       /* the plugin's own running dot */
+      --warn: #fbbf24;     /* retrying */
+      --dead: #f87171;     /* limit over */
+      --accent: #4ade80;
+      --radius: 8px;
+      --radius-sm: 6px;
+      --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 1rem/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 1040px; margin-inline: auto; padding-inline: 1.5rem; }
+    section { padding-block: 4rem; border-top: 1px solid var(--border); }
+    .skip {
+      position: absolute; left: -999px; top: 0;
+      background: var(--surface); color: var(--text); padding: .5rem 1rem;
+    }
+    .skip:focus { left: 0; z-index: 10; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    :is(h1, h2, h3) { line-height: 1.15; margin: 0 0 .75rem; letter-spacing: -0.02em; }
+    h1 { font-size: clamp(1.9rem, 4.4vw, 3rem); }
+    h2 { font-size: clamp(1.4rem, 2.8vw, 1.9rem); }
+    h3 { font-size: 1.05rem; margin-top: 0; }
+    p { margin: 0 0 1rem; }
+    .muted { color: var(--muted); }
+    .hiline { color: var(--muted); font-style: italic; font-size: .95rem; margin: -.25rem 0 1.25rem; }
+
+    /* header */
+    header.bar {
+      position: sticky; top: 0; z-index: 5;
+      background: color-mix(in srgb, var(--bg) 92%, transparent);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(6px);
+    }
+    .bar-in { display: flex; align-items: center; gap: 1rem; min-height: 3.25rem; }
+    .brand { font-family: var(--mono); font-weight: 700; color: var(--text); }
+    .brand .dot { color: var(--ok); }
+    nav.bar-nav { margin-left: auto; display: flex; gap: 1.15rem; flex-wrap: wrap; }
+    nav.bar-nav a { color: var(--muted); font-size: .92rem; }
+    nav.bar-nav a:hover { color: var(--text); text-decoration: none; }
+
+    /* buttons */
+    .btn {
+      display: inline-block; padding: .6rem 1.1rem; border-radius: var(--radius-sm);
+      font-weight: 600; font-size: .95rem; border: 1px solid transparent;
+    }
+    .btn:focus-visible, a:focus-visible, summary:focus-visible {
+      outline: 2px solid var(--warn); outline-offset: 2px;
+    }
+    .btn-solid { background: var(--accent); color: #08120b; }
+    .btn-solid:hover { background: #6ee7a0; text-decoration: none; }
+    .btn-ghost { border-color: var(--border); color: var(--text); }
+    .btn-ghost:hover { border-color: var(--muted); text-decoration: none; }
+
+    /* hero */
+    .hero { padding-block: 4.5rem 4rem; display: grid; gap: 2.5rem; grid-template-columns: 1fr; align-items: center; }
+    @media (min-width: 1024px) { .hero { grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); } }
+    .badge-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.25rem; }
+    .chip {
+      font-family: var(--mono); font-size: .78rem;
+      border: 1px solid var(--border); border-radius: 999px;
+      padding: .25rem .7rem; color: var(--muted); background: var(--surface);
+    }
+    .hero-cta { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.75rem; }
+
+    /* mockup picker */
+    .picker {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); font-family: var(--mono); font-size: .88rem;
+      overflow: hidden;
+    }
+    .picker-head { padding: .8rem 1rem .5rem; color: var(--muted); font-size: .8rem; }
+    .picker-row { display: flex; align-items: center; gap: .6rem; padding: .6rem 1rem; border-top: 1px solid var(--border); }
+    .picker-row .g { width: 1.2em; text-align: center; }
+    .g-ok { color: var(--ok); }
+    .g-warn { color: var(--warn); }
+    .g-dead { color: var(--dead); }
+    .g-idle { color: var(--muted); }
+    .picker-row .count { margin-left: auto; color: var(--muted); font-size: .8rem; }
+    .picker-kbd { padding: .7rem 1rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .78rem; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+    .pulse { animation: pulse 1.6s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } html { scroll-behavior: auto; } }
+
+    /* legend */
+    table.legend { width: 100%; border-collapse: collapse; font-size: .95rem; }
+    table.legend th, table.legend td {
+      text-align: left; padding: .8rem 1rem; border: 1px solid var(--border);
+    }
+    table.legend th { color: var(--muted); font-weight: 600; background: var(--surface); }
+    table.legend td.gcell { font-family: var(--mono); width: 3.5rem; text-align: center; font-size: 1.05rem; }
+
+    /* problem / feature cards */
+    .cards { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    @media (min-width: 768px) { .cards.tri { grid-template-columns: repeat(3, 1fr); } }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.25rem;
+    }
+    .card .glyph { font-family: var(--mono); font-size: 1.5rem; display: block; margin-bottom: .5rem; }
+
+    /* autobg timeline */
+    .timeline { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--border); margin-left: .5rem; }
+    .timeline li { position: relative; padding: .35rem 0 1.35rem 1.5rem; }
+    .timeline li:last-child { padding-bottom: .25rem; }
+    .timeline li::before {
+      content: ""; position: absolute; left: -7px; top: .55rem;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--bg); border: 2px solid var(--ok);
+    }
+    .timeline .t { font-family: var(--mono); color: var(--ok); font-size: .85rem; display: block; }
+    .autobg-grid { display: grid; gap: 2rem; grid-template-columns: 1fr; align-items: center; }
+    @media (min-width: 900px) { .autobg-grid { grid-template-columns: 1.05fr .95fr; } }
+    .fineprint { font-size: .85rem; color: var(--muted); }
+
+    /* checklist */
+    ul.check { list-style: none; padding: 0; margin: 0; }
+    ul.check li { padding: .35rem 0 .35rem 1.6rem; position: relative; }
+    ul.check li::before { content: "✓"; position: absolute; left: 0; color: var(--ok); font-weight: 700; }
+
+    /* install */
+    pre {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 1rem 1.1rem; overflow-x: auto;
+      font-family: var(--mono); font-size: .84rem; line-height: 1.6; margin: 0 0 .5rem;
+    }
+    code.inline { font-family: var(--mono); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: .05rem .35rem; font-size: .88em; }
+    .steps { counter-reset: step; display: grid; gap: 1.25rem; }
+    .step { display: grid; grid-template-columns: 2.4rem 1fr; gap: .9rem; align-items: start; }
+    .step::before {
+      counter-increment: step; content: counter(step);
+      font-family: var(--mono); font-weight: 700; color: var(--accent);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center; height: 2.4rem;
+      background: var(--surface);
+    }
+    .langlabel { font-size: .8rem; color: var(--muted); font-family: var(--mono); display: block; margin-top: .75rem; }
+
+    /* faq */
+    details { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); margin-bottom: .75rem; }
+    summary { cursor: pointer; padding: .95rem 1.1rem; font-weight: 600; list-style: revert; }
+    details > div { padding: 0 1.1rem 1rem; color: #c8cfd6; }
+
+    /* footer */
+    footer { border-top: 1px solid var(--border); padding-block: 2.25rem 3rem; color: var(--muted); font-size: .9rem; }
+    footer .frow { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; align-items: center; }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="bar">
+    <div class="wrap bar-in">
+      <a class="brand" href="#top"><span class="dot">●</span> model-badges</a>
+      <nav class="bar-nav" aria-label="Page sections">
+        <a href="#legend">What you see</a>
+        <a href="#why">Why</a>
+        <a href="#autobg">AutoBG</a>
+        <a href="#install">Install</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/engrtarun/opencode-model-badges">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- HERO -->
+    <div class="wrap" id="top">
+      <div class="hero">
+        <div>
+          <h1>Ten models. Five agents.<br />Zero idea which one is free.</h1>
+          <p>
+            <strong>opencode-model-badges</strong> is a tiny OpenCode plugin that draws
+            live badges right inside your model picker — who is running, who is
+            retrying, whose quota is finished. And with <strong>AutoBG</strong>, a session
+            whose tool runs too long moves itself to background, so your screen stays yours.
+          </p>
+          <p class="hiline">Hindi: OpenCode ke andar model picker me har naam ke aage live status dikhta hai — aur 1 minute se lambi cheez khud background me chali jaati hai.</p>
+          <div class="hero-cta">
+            <a class="btn btn-solid" href="#install">Get it in 60 seconds</a>
+            <a class="btn btn-ghost" href="https://github.com/engrtarun/opencode-model-badges">View source on GitHub</a>
+          </div>
+          <div class="badge-row">
+            <span class="chip">✓ 35 tests · node 22 &amp; 24</span>
+            <span class="chip">0 dependencies</span>
+            <span class="chip">0 child processes</span>
+            <span class="chip">MIT license</span>
+            <span class="chip">v0.4.3</span>
+          </div>
+        </div>
+
+        <!-- CSS mockup: the model picker with badges -->
+        <div class="picker" role="img" aria-label="Mockup of the OpenCode model picker showing live badges: two models running, one retrying, one limit-over, one idle">
+          <div class="picker-head">Switch model</div>
+          <div class="picker-row"><span class="g g-ok pulse">●</span> deepseek-v4.1 <span class="count">2 running</span></div>
+          <div class="picker-row"><span class="g g-ok pulse">●</span> glm-5.3-flash <span class="count">1 running</span></div>
+          <div class="picker-row"><span class="g g-warn">↻</span> qwen3-27b <span class="count">retrying…</span></div>
+          <div class="picker-row"><span class="g g-dead">✕</span> gpt-5.5 <span class="count">limit over</span></div>
+          <div class="picker-row"><span class="g g-idle">○</span> minimax-m3 <span class="count">idle · free</span></div>
+          <div class="picker-kbd">↑↓ select · enter confirm · this badge text is the plugin</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEGEND -->
+    <section id="legend">
+      <div class="wrap">
+        <h2>What you actually see</h2>
+        <p class="hiline">Hindi: yaad rakhne ke liye sirf 3 nishaan — bharta (●), saans le raha (↻), khatam (✕).</p>
+        <table class="legend">
+          <thead>
+            <tr><th scope="col">Badge</th><th scope="col">Meaning</th><th scope="col">What to do</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="gcell g-ok">● 2</td>
+              <td>2 sessions are running on this model right now</td>
+              <td>Heavy work going on — open a new one elsewhere if you like</td>
+            </tr>
+            <tr>
+              <td class="gcell g-warn">↻</td>
+              <td>OpenCode is retrying this model (rate limit / back-off)</td>
+              <td>Gives moments later; switch for now if in a hurry</td>
+            </tr>
+            <tr>
+              <td class="gcell g-dead">✕</td>
+              <td>Limit used up — the session was marked exhausted</td>
+              <td>Pick another model for the next task</td>
+            </tr>
+            <tr>
+              <td class="gcell g-idle">○</td>
+              <td>Idle — nothing running</td>
+              <td>Free to use</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- WHY -->
+    <section id="why">
+      <div class="wrap">
+        <h2>Why you will want it</h2>
+        <p class="hiline">Hindi: problem teen hai — kaun busy, kaun khatam, aur lambi cheez screen band kar deti hai.</p>
+        <div class="cards tri">
+          <div class="card">
+            <span class="glyph g-ok">●</span>
+            <h3>One glance, free model</h3>
+            <p class="muted">Multiple agents across multiple providers? The picker now shows each model's live load. Pick an idle one instead of guessing.</p>
+          </div>
+          <div class="card">
+            <span class="glyph g-warn">↻</span>
+            <h3>No more quota surprises</h3>
+            <p class="muted">Free models eat their limits mid-work. The badge shows retrying or exhausted <em>before</em> you waste a prompt on a model that cannot answer.</p>
+          </div>
+          <div class="card">
+            <span class="glyph">🛰</span>
+            <h3>Sessions manage themselves</h3>
+            <p class="muted">A download or build runs 6 minutes? AutoBG moves it to background automatically — you keep typing, the tool keeps running.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AUTOBG -->
+    <section id="autobg">
+      <div class="wrap">
+        <div class="autobg-grid">
+          <div>
+            <h2>AutoBG — the session that moves itself</h2>
+            <p>
+              When a <strong>tool</strong> (a download, a build, a script) keeps the session
+              blocked for over <strong>1 minute</strong>, the plugin runs exactly what
+              <kbd>Ctrl+B</kbd> runs — the session moves to background, with a heads-up toast first.
+            </p>
+            <ul class="check">
+              <li><strong>Heads-up:</strong> one toast at 45s — <code class="inline">AutoBG: 15s — "bash" moves to background automatically</code></li>
+              <li><strong>Nothing dies:</strong> backgrounding never kills the tool — the engine's own contract</li>
+              <li><strong>Tools only:</strong> a model thinking/writing for 10 minutes is never touched</li>
+              <li><strong>Multi-agent safe:</strong> several OpenCode windows at once? an NTFS-atomic lock means exactly one move fires</li>
+              <li><strong>Subagent-safe:</strong> child sessions are never detached from their parent</li>
+            </ul>
+            <p class="fineprint">Thresholds are two constants at the top of <code class="inline">autobg.ts</code> (<code class="inline">THRESHOLD_MS = 60_000</code>, <code class="inline">WARN_BEFORE_MS = 15_000</code>). If your build dropped the toast route, the countdown is still logged to <code class="inline">debug.log</code>.</p>
+          </div>
+          <div>
+            <ol class="timeline">
+              <li><span class="t">0:00</span> You start a download inside a session</li>
+              <li><span class="t">0:45</span> Toast: <em>"AutoBG: 15s left"</em> — you know it's coming</li>
+              <li><span class="t">1:00</span> Session moves to background (the Ctrl+B operation)</li>
+              <li><span class="t">after</span> Tool keeps running · your foreground is free · next long run arms itself again</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW / WHERE -->
+    <section id="how">
+      <div class="wrap">
+        <h2>Where it runs, what it touches</h2>
+        <p class="hiline">Hindi: sab kuch aapki machine ke andar — bahar kuch nahi jata.</p>
+        <ul class="check">
+          <li>Runs <strong>inside OpenCode itself</strong> — it reads the local event stream on <code class="inline">localhost</code>, nothing leaves your machine</li>
+          <li><strong>Zero dependencies</strong>, zero child processes, no background services, no telemetry</li>
+          <li>Works on <strong>Windows, macOS, Linux</strong></li>
+          <li>Detects <strong>old (v1) and new (v2) OpenCode engines</strong> automatically</li>
+          <li>Nothing to configure — drop the files, restart, done</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- INSTALL -->
+    <section id="install">
+      <div class="wrap">
+        <h2>Get it in 60 seconds</h2>
+        <p class="hiline">Hindi: 3 step — files copy karo, OpenCode pura band karke kholo, picker khol ke dekho.</p>
+        <div class="steps">
+          <div class="step">
+            <div>
+              <h3 style="margin-bottom:.5rem">Copy the plugin into OpenCode's plugins folder</h3>
+              <span class="langlabel">Windows (PowerShell)</span>
+              <pre>git clone https://github.com/engrtarun/opencode-model-badges "$env:USERPROFILE\model-badges"
+cd "$env:USERPROFILE\model-badges"
+$dst = "$env:USERPROFILE\.config\opencode\plugins\model-badges"
+New-Item -ItemType Directory -Force -Path $dst | Out-Null
+Copy-Item index.ts, lib.ts, autobg.ts, package.json $dst</pre>
+              <span class="langlabel">macOS / Linux (bash)</span>
+              <pre>git clone https://github.com/engrtarun/opencode-model-badges ~/src/model-badges
+cd ~/src/model-badges
+mkdir -p ~/.config/opencode/plugins/model-badges
+cp index.ts lib.ts autobg.ts package.json ~/.config/opencode/plugins/model-badges/</pre>
+              <p class="fineprint" style="margin-top:.5rem">No git? Download the 4 files (<code class="inline">index.ts, lib.ts, autobg.ts, package.json</code>) from the repository and place them in that same folder yourself.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div>
+              <h3 style="margin-bottom:.5rem">Restart OpenCode — fully</h3>
+              <p class="muted">Close the app and open it again (a fresh tab is not enough — the plugin loads with the server).</p>
+            </div>
+          </div>
+          <div class="step">
+            <div>
+              <h3 style="margin-bottom:.5rem">Open the model picker</h3>
+              <p class="muted">Badges appear on every name. Start any tool that runs over a minute — watch AutoBG move it. That's it, nothing to configure.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq">
+      <div class="wrap">
+        <h2>Questions people actually ask</h2>
+        <details>
+          <summary>Does it send anything to the internet?</summary>
+          <div>No. It reads OpenCode's local event stream on your own machine and updates text in your picker. The only network calls are to your own local OpenCode server.</div>
+        </details>
+        <details>
+          <summary>Will it slow OpenCode down?</summary>
+          <div>It is one file of TypeScript listening to events — no child processes, no dependencies, and per-session state is cleaned up automatically. It costs roughly the RAM of a text file.</div>
+        </details>
+        <details>
+          <summary>I restarted but I don't see any badges / toasts</summary>
+          <div>Check the plugin folder has all 4 files and that OpenCode was fully closed and reopened. Some builds dropped the toast route — AutoBG then logs its countdown to <code>~/.config/opencode/plugins/model-badges/debug.log</code> and <em>still</em> performs the background move.</div>
+        </details>
+        <details>
+          <summary>Does AutoBG ever kill my running tool?</summary>
+          <div>No. Moving a session to background keeps the tool running — that is OpenCode's own behavior when you press Ctrl+B too. The plugin only presses that same operation for you.</div>
+        </details>
+        <details>
+          <summary>Can I change the 1-minute threshold?</summary>
+          <div>Yes — two constants at the top of <code>autobg.ts</code>: <code>THRESHOLD_MS</code> and <code>WARN_BEFORE_MS</code>. Edit, restart, done.</div>
+        </details>
+        <details>
+          <summary>How do I remove it?</summary>
+          <div>Delete the folder <code>~/.config/opencode/plugins/model-badges</code>. No config entries, no registry, no cleanup needed.</div>
+        </details>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section>
+      <div class="wrap" style="text-align:center">
+        <h2>Your agents are already saying things.<br />Now you can see them.</h2>
+        <div class="hero-cta" style="justify-content:center">
+          <a class="btn btn-solid" href="#install">Get it in 60 seconds</a>
+          <a class="btn btn-ghost" href="https://github.com/engrtarun/opencode-model-badges/releases">Releases &amp; changelog</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap frow">
+      <div>MIT License · zero dependencies · no telemetry · made for the OpenCode community</div>
+      <div><span class="chip">v0.4.3</span> <a href="https://github.com/engrtarun/opencode-model-badges">GitHub repo</a> · <a href="https://github.com/engrtarun/opencode-model-badges/discussions/14">Discussions</a></div>
+    </div>
+  </footer>
+</body>
+</html>
