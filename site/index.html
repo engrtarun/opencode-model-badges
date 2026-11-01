@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>opencode-model-badges — see which model is free, lose nothing to the foreground</title>
-  <meta name="description" content="A tiny zero-dependency OpenCode plugin: live running/retrying/exhausted badges right inside your model picker, plus AutoBG — sessions whose tools run over a minute move themselves to background." />
+  <title>opencode-model-badges â€” see which model is free, lose nothing to the foreground</title>
+  <meta name="description" content="A tiny zero-dependency OpenCode plugin: live running/retrying/exhausted badges right inside your model picker, plus AutoBG â€” sessions whose tools run over a minute move themselves to background." />
   <meta property="og:title" content="opencode-model-badges" />
   <meta property="og:description" content="Live badges on every model name + AutoBG: long sessions move themselves to background. Zero dependencies, nothing to configure." />
   <meta property="og:type" content="website" />
@@ -142,7 +142,7 @@
     /* checklist */
     ul.check { list-style: none; padding: 0; margin: 0; }
     ul.check li { padding: .35rem 0 .35rem 1.6rem; position: relative; }
-    ul.check li::before { content: "✓"; position: absolute; left: 0; color: var(--ok); font-weight: 700; }
+    ul.check li::before { content: "âœ“"; position: absolute; left: 0; color: var(--ok); font-weight: 700; }
 
     /* install */
     pre {
@@ -177,7 +177,7 @@
 
   <header class="bar">
     <div class="wrap bar-in">
-      <a class="brand" href="#top"><span class="dot">●</span> model-badges</a>
+      <a class="brand" href="#top"><span class="dot">â—</span> model-badges</a>
       <nav class="bar-nav" aria-label="Page sections">
         <a href="#legend">What you see</a>
         <a href="#why">Why</a>
@@ -197,33 +197,33 @@
           <h1>Ten models. Five agents.<br />Zero idea which one is free.</h1>
           <p>
             <strong>opencode-model-badges</strong> is a tiny OpenCode plugin that draws
-            live badges right inside your model picker — who is running, who is
+            live badges right inside your model picker â€” who is running, who is
             retrying, whose quota is finished. And with <strong>AutoBG</strong>, a session
             whose tool runs too long moves itself to background, so your screen stays yours.
           </p>
-          <p class="hiline">Hindi: OpenCode ke andar model picker me har naam ke aage live status dikhta hai — aur 1 minute se lambi cheez khud background me chali jaati hai.</p>
+          <p class="hiline">Hindi: OpenCode ke andar model picker me har naam ke aage live status dikhta hai â€” aur 1 minute se lambi cheez khud background me chali jaati hai.</p>
           <div class="hero-cta">
             <a class="btn btn-solid" href="#install">Get it in 60 seconds</a>
             <a class="btn btn-ghost" href="https://github.com/engrtarun/opencode-model-badges">View source on GitHub</a>
           </div>
           <div class="badge-row">
-            <span class="chip">✓ 35 tests · node 22 &amp; 24</span>
+            <span class="chip">âœ“ 43 tests Â· node 22 &amp; 24</span>
             <span class="chip">0 dependencies</span>
             <span class="chip">0 child processes</span>
             <span class="chip">MIT license</span>
-            <span class="chip">v0.4.3</span>
+            <span class="chip">v0.4.4</span>
           </div>
         </div>
 
         <!-- CSS mockup: the model picker with badges -->
         <div class="picker" role="img" aria-label="Mockup of the OpenCode model picker showing live badges: two models running, one retrying, one limit-over, one idle">
           <div class="picker-head">Switch model</div>
-          <div class="picker-row"><span class="g g-ok pulse">●</span> deepseek-v4.1 <span class="count">2 running</span></div>
-          <div class="picker-row"><span class="g g-ok pulse">●</span> glm-5.3-flash <span class="count">1 running</span></div>
-          <div class="picker-row"><span class="g g-warn">↻</span> qwen3-27b <span class="count">retrying…</span></div>
-          <div class="picker-row"><span class="g g-dead">✕</span> gpt-5.5 <span class="count">limit over</span></div>
-          <div class="picker-row"><span class="g g-idle">○</span> minimax-m3 <span class="count">idle · free</span></div>
-          <div class="picker-kbd">↑↓ select · enter confirm · this badge text is the plugin</div>
+          <div class="picker-row"><span class="g g-ok pulse">â—</span> deepseek-v4.1 <span class="count">2 running</span></div>
+          <div class="picker-row"><span class="g g-ok pulse">â—</span> glm-5.3-flash <span class="count">1 running</span></div>
+          <div class="picker-row"><span class="g g-warn">â†»</span> qwen3-27b <span class="count">retryingâ€¦</span></div>
+          <div class="picker-row"><span class="g g-dead">âœ•</span> gpt-5.5 <span class="count">limit over</span></div>
+          <div class="picker-row"><span class="g g-idle">â—‹</span> minimax-m3 <span class="count">idle Â· free</span></div>
+          <div class="picker-kbd">â†‘â†“ select Â· enter confirm Â· this badge text is the plugin</div>
         </div>
       </div>
     </div>
@@ -232,30 +232,30 @@
     <section id="legend">
       <div class="wrap">
         <h2>What you actually see</h2>
-        <p class="hiline">Hindi: yaad rakhne ke liye sirf 3 nishaan — bharta (●), saans le raha (↻), khatam (✕).</p>
+        <p class="hiline">Hindi: yaad rakhne ke liye sirf 3 nishaan â€” bharta (â—), saans le raha (â†»), khatam (âœ•).</p>
         <table class="legend">
           <thead>
             <tr><th scope="col">Badge</th><th scope="col">Meaning</th><th scope="col">What to do</th></tr>
           </thead>
           <tbody>
             <tr>
-              <td class="gcell g-ok">● 2</td>
+              <td class="gcell g-ok">â— 2</td>
               <td>2 sessions are running on this model right now</td>
-              <td>Heavy work going on — open a new one elsewhere if you like</td>
+              <td>Heavy work going on â€” open a new one elsewhere if you like</td>
             </tr>
             <tr>
-              <td class="gcell g-warn">↻</td>
+              <td class="gcell g-warn">â†»</td>
               <td>OpenCode is retrying this model (rate limit / back-off)</td>
               <td>Gives moments later; switch for now if in a hurry</td>
             </tr>
             <tr>
-              <td class="gcell g-dead">✕</td>
-              <td>Limit used up — the session was marked exhausted</td>
-              <td>Pick another model for the next task</td>
+              <td class="gcell g-dead">âœ•</td>
+              <td>Rate/usage limit used up â€” the session was marked exhausted</td>
+              <td>Pick another model for the next task. Plain network failures (502 storms) never show this</td>
             </tr>
             <tr>
-              <td class="gcell g-idle">○</td>
-              <td>Idle — nothing running</td>
+              <td class="gcell g-idle">â—‹</td>
+              <td>Idle â€” nothing running</td>
               <td>Free to use</td>
             </tr>
           </tbody>
@@ -267,22 +267,22 @@
     <section id="why">
       <div class="wrap">
         <h2>Why you will want it</h2>
-        <p class="hiline">Hindi: problem teen hai — kaun busy, kaun khatam, aur lambi cheez screen band kar deti hai.</p>
+        <p class="hiline">Hindi: problem teen hai â€” kaun busy, kaun khatam, aur lambi cheez screen band kar deti hai.</p>
         <div class="cards tri">
           <div class="card">
-            <span class="glyph g-ok">●</span>
+            <span class="glyph g-ok">â—</span>
             <h3>One glance, free model</h3>
             <p class="muted">Multiple agents across multiple providers? The picker now shows each model's live load. Pick an idle one instead of guessing.</p>
           </div>
           <div class="card">
-            <span class="glyph g-warn">↻</span>
+            <span class="glyph g-warn">â†»</span>
             <h3>No more quota surprises</h3>
             <p class="muted">Free models eat their limits mid-work. The badge shows retrying or exhausted <em>before</em> you waste a prompt on a model that cannot answer.</p>
           </div>
           <div class="card">
-            <span class="glyph">🛰</span>
+            <span class="glyph">ðŸ›°</span>
             <h3>Sessions manage themselves</h3>
-            <p class="muted">A download or build runs 6 minutes? AutoBG moves it to background automatically — you keep typing, the tool keeps running.</p>
+            <p class="muted">A download or build runs 6 minutes? AutoBG moves it to background automatically â€” you keep typing, the tool keeps running.</p>
           </div>
         </div>
       </div>
@@ -293,15 +293,15 @@
       <div class="wrap">
         <div class="autobg-grid">
           <div>
-            <h2>AutoBG — the session that moves itself</h2>
+            <h2>AutoBG â€” the session that moves itself</h2>
             <p>
               When a <strong>tool</strong> (a download, a build, a script) keeps the session
               blocked for over <strong>1 minute</strong>, the plugin runs exactly what
-              <kbd>Ctrl+B</kbd> runs — the session moves to background, with a heads-up toast first.
+              <kbd>Ctrl+B</kbd> runs â€” the session moves to background, with a heads-up toast first.
             </p>
             <ul class="check">
-              <li><strong>Heads-up:</strong> one toast at 45s — <code class="inline">AutoBG: 15s — "bash" moves to background automatically</code></li>
-              <li><strong>Nothing dies:</strong> backgrounding never kills the tool — the engine's own contract</li>
+              <li><strong>Heads-up:</strong> one toast at 45s â€” <code class="inline">AutoBG: 15s â€” "bash" moves to background automatically</code></li>
+              <li><strong>Nothing dies:</strong> backgrounding never kills the tool â€” the engine's own contract</li>
               <li><strong>Tools only:</strong> a model thinking/writing for 10 minutes is never touched</li>
               <li><strong>Multi-agent safe:</strong> several OpenCode windows at once? an NTFS-atomic lock means exactly one move fires</li>
               <li><strong>Subagent-safe:</strong> child sessions are never detached from their parent</li>
@@ -311,9 +311,9 @@
           <div>
             <ol class="timeline">
               <li><span class="t">0:00</span> You start a download inside a session</li>
-              <li><span class="t">0:45</span> Toast: <em>"AutoBG: 15s left"</em> — you know it's coming</li>
+              <li><span class="t">0:45</span> Toast: <em>"AutoBG: 15s left"</em> â€” you know it's coming</li>
               <li><span class="t">1:00</span> Session moves to background (the Ctrl+B operation)</li>
-              <li><span class="t">after</span> Tool keeps running · your foreground is free · next long run arms itself again</li>
+              <li><span class="t">after</span> Tool keeps running Â· your foreground is free Â· next long run arms itself again</li>
             </ol>
           </div>
         </div>
@@ -324,13 +324,13 @@
     <section id="how">
       <div class="wrap">
         <h2>Where it runs, what it touches</h2>
-        <p class="hiline">Hindi: sab kuch aapki machine ke andar — bahar kuch nahi jata.</p>
+        <p class="hiline">Hindi: sab kuch aapki machine ke andar â€” bahar kuch nahi jata.</p>
         <ul class="check">
-          <li>Runs <strong>inside OpenCode itself</strong> — it reads the local event stream on <code class="inline">localhost</code>, nothing leaves your machine</li>
+          <li>Runs <strong>inside OpenCode itself</strong> â€” it reads the local event stream on <code class="inline">localhost</code>, nothing leaves your machine</li>
           <li><strong>Zero dependencies</strong>, zero child processes, no background services, no telemetry</li>
           <li>Works on <strong>Windows, macOS, Linux</strong></li>
           <li>Detects <strong>old (v1) and new (v2) OpenCode engines</strong> automatically</li>
-          <li>Nothing to configure — drop the files, restart, done</li>
+          <li>Nothing to configure â€” drop the files, restart, done</li>
         </ul>
       </div>
     </section>
@@ -339,7 +339,7 @@
     <section id="install">
       <div class="wrap">
         <h2>Get it in 60 seconds</h2>
-        <p class="hiline">Hindi: 3 step — files copy karo, OpenCode pura band karke kholo, picker khol ke dekho.</p>
+        <p class="hiline">Hindi: 3 step â€” files copy karo, OpenCode pura band karke kholo, picker khol ke dekho.</p>
         <div class="steps">
           <div class="step">
             <div>
@@ -360,14 +360,14 @@ cp index.ts lib.ts autobg.ts package.json ~/.config/opencode/plugins/model-badge
           </div>
           <div class="step">
             <div>
-              <h3 style="margin-bottom:.5rem">Restart OpenCode — fully</h3>
-              <p class="muted">Close the app and open it again (a fresh tab is not enough — the plugin loads with the server).</p>
+              <h3 style="margin-bottom:.5rem">Restart OpenCode â€” fully</h3>
+              <p class="muted">Close the app and open it again (a fresh tab is not enough â€” the plugin loads with the server).</p>
             </div>
           </div>
           <div class="step">
             <div>
               <h3 style="margin-bottom:.5rem">Open the model picker</h3>
-              <p class="muted">Badges appear on every name. Start any tool that runs over a minute — watch AutoBG move it. That's it, nothing to configure.</p>
+              <p class="muted">Badges appear on every name. Start any tool that runs over a minute â€” watch AutoBG move it. That's it, nothing to configure.</p>
             </div>
           </div>
         </div>
@@ -384,19 +384,19 @@ cp index.ts lib.ts autobg.ts package.json ~/.config/opencode/plugins/model-badge
         </details>
         <details>
           <summary>Will it slow OpenCode down?</summary>
-          <div>It is one file of TypeScript listening to events — no child processes, no dependencies, and per-session state is cleaned up automatically. It costs roughly the RAM of a text file.</div>
+          <div>It is one file of TypeScript listening to events â€” no child processes, no dependencies, and per-session state is cleaned up automatically. It costs roughly the RAM of a text file.</div>
         </details>
         <details>
           <summary>I restarted but I don't see any badges / toasts</summary>
-          <div>Check the plugin folder has all 4 files and that OpenCode was fully closed and reopened. Some builds dropped the toast route — AutoBG then logs its countdown to <code>~/.config/opencode/plugins/model-badges/debug.log</code> and <em>still</em> performs the background move.</div>
+          <div>Check the plugin folder has all 4 files and that OpenCode was fully closed and reopened. Some builds dropped the toast route â€” AutoBG then logs its countdown to <code>~/.config/opencode/plugins/model-badges/debug.log</code> and <em>still</em> performs the background move.</div>
         </details>
         <details>
           <summary>Does AutoBG ever kill my running tool?</summary>
-          <div>No. Moving a session to background keeps the tool running — that is OpenCode's own behavior when you press Ctrl+B too. The plugin only presses that same operation for you.</div>
+          <div>No. Moving a session to background keeps the tool running â€” that is OpenCode's own behavior when you press Ctrl+B too. The plugin only presses that same operation for you.</div>
         </details>
         <details>
           <summary>Can I change the 1-minute threshold?</summary>
-          <div>Yes — two constants at the top of <code>autobg.ts</code>: <code>THRESHOLD_MS</code> and <code>WARN_BEFORE_MS</code>. Edit, restart, done.</div>
+          <div>Yes â€” two constants at the top of <code>autobg.ts</code>: <code>THRESHOLD_MS</code> and <code>WARN_BEFORE_MS</code>. Edit, restart, done.</div>
         </details>
         <details>
           <summary>How do I remove it?</summary>
@@ -419,8 +419,8 @@ cp index.ts lib.ts autobg.ts package.json ~/.config/opencode/plugins/model-badge
 
   <footer>
     <div class="wrap frow">
-      <div>MIT License · zero dependencies · no telemetry · made for the OpenCode community</div>
-      <div><span class="chip">v0.4.3</span> <a href="https://github.com/engrtarun/opencode-model-badges">GitHub repo</a> · <a href="https://github.com/engrtarun/opencode-model-badges/discussions/14">Discussions</a></div>
+      <div>MIT License Â· zero dependencies Â· no telemetry Â· made for the OpenCode community</div>
+      <div><span class="chip">v0.4.4</span> <a href="https://github.com/engrtarun/opencode-model-badges">GitHub repo</a> Â· <a href="https://github.com/engrtarun/opencode-model-badges/discussions/14">Discussions</a></div>
     </div>
   </footer>
 </body>
