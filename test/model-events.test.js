@@ -124,3 +124,31 @@ test("a session list started before a model switch cannot restore the old badge"
   assert.equal(h.models.get("provider/a").name, "A")
   assert.equal(h.models.get("provider/b").name, "B ●")
 })
+
+// ---- v1 #10: the retry status carries a `message` — it must be honoured ----
+
+test("#10: v1 retry back-off on a transport message dying to idle earns no ✕", async (t) => {
+  const h = await setup(t)
+  await h.emit("session.status", {
+    sessionID: "s1",
+    status: { type: "retry", attempt: 2, message: "Bad Gateway (502)" },
+  })
+  await h.tick(500)
+  assert.equal(h.models.get("provider/a").name, "A ↻")
+  await h.emit("session.status", { sessionID: "s1", status: { type: "idle" } })
+  await h.tick(500)
+  assert.equal(h.models.get("provider/a").name, "A", "502-backed-off chain gave up: no rate limit, no ✕")
+})
+
+test("#10: v1 retry with a rate-limit message surviving to idle keeps ✕", async (t) => {
+  const h = await setup(t)
+  await h.emit("session.status", {
+    sessionID: "s1",
+    status: { type: "retry", attempt: 3, message: "usage limit reached — resets in 5h" },
+  })
+  await h.tick(500)
+  assert.equal(h.models.get("provider/a").name, "A ↻")
+  await h.emit("session.status", { sessionID: "s1", status: { type: "idle" } })
+  await h.tick(500)
+  assert.equal(h.models.get("provider/a").name, "A ✕")
+})

@@ -32,6 +32,30 @@ export function pickBadge(running: number, retrying = 0, exhausted = false): str
   return ""
 }
 
+// ---------------------------------------------------------------------------
+// ✕ accuracy (#10): ✕ means a rate/USAGE limit specifically. OpenCode's retry
+// policy also backs off on plain transport failures (502s, timeouts, flaky
+// upstreams) — a chain that dies retrying those must NOT exhaust the badge.
+// Events carry their own reason text (v1 `status.message`, v2 `error` — a
+// string or a typed { name: "provider.free-limit", message }). Classify it:
+// limit-ish wording may hold the ✕ mark, transport wording never does, and
+// unknown wording stays permissive (today's behaviour — better than silence).
+// ---------------------------------------------------------------------------
+const RATE_LIMIT_RE =
+  /rate[ ._-]?limi|too many requests|usage[ ._-]limit|limit[ ._-](?:exceeded|reached)|quota|429|usage limit error|freeusagelimiterror|gousagelimiterror|chatgptlimiterror|provider\.(?:free|go|chatgpt)-limit/i
+
+const TRANSPORT_RE =
+  /\b50[2349]\b|bad gateway|service unavailable|gateway timeout|timed?\s?out|network error|fetch failed|econn(?:aborted|refused|reset)|socket hang ?up|\bdns\b|ENOTFOUND|EAI_AGAIN|internal server error/i
+
+export type RetryKind = "rate-limit" | "transport" | "unknown"
+
+export function classifyRetry(text?: string | null): RetryKind {
+  if (!text) return "unknown"
+  if (RATE_LIMIT_RE.test(text)) return "rate-limit"
+  if (TRANSPORT_RE.test(text)) return "transport"
+  return "unknown"
+}
+
 export type CountState = {
   sessionModels: Map<string, string>
   statusBusy: ReadonlySet<string>

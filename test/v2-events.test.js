@@ -80,6 +80,54 @@ test("v2 retry back-off shows ↻ and a chain that dies leaves ✕ on the model"
   assert.equal(h.name("provider/a"), "A ✕")
 })
 
+// ---- ✕ accuracy (#10): the back-off REASON decides whether ✕ may appear ----
+
+test("#10: a retry chain backing off on a transport failure never earns ✕", async (t) => {
+  const h = await setup(t)
+  await h.emit("session.retry.scheduled", {
+    sessionID: "s1",
+    at: Date.now() + 9_000,
+    attempt: 2,
+    error: "Bad Gateway (502)",
+  })
+  await h.tick(500)
+  assert.equal(h.name("provider/a"), "A ↻", "still retrying — ↻ is correct regardless of the reason")
+  // the chain gives up after retrying 502s — nothing was rate-limited
+  await h.emit("session.execution.failed", { sessionID: "s1", error: { kind: "provider_error" } })
+  await h.tick(500)
+  assert.equal(h.name("provider/a"), "A", "a 502 storm must not paint the rate-limit ✕")
+})
+
+test("#10: a retry chain backing off on explicit rate-limit wording keeps ✕", async (t) => {
+  const h = await setup(t)
+  await h.emit("session.retry.scheduled", {
+    sessionID: "s1",
+    at: Date.now() + 9_000,
+    attempt: 2,
+    error: "rate limit exceeded: too many requests",
+  })
+  await h.tick(500)
+  assert.equal(h.name("provider/a"), "A ↻")
+  await h.emit("session.execution.failed", { sessionID: "s1", error: { kind: "provider_error" } })
+  await h.tick(500)
+  assert.equal(h.name("provider/a"), "A ✕", "the mark survives exactly like before")
+})
+
+test("#10: typed v2 error classes (provider.free-limit) count as rate limits", async (t) => {
+  const h = await setup(t)
+  await h.emit("session.retry.scheduled", {
+    sessionID: "s1",
+    at: Date.now() + 9_000,
+    attempt: 2,
+    error: { name: "provider.free-limit", message: "Free usage limit reached" },
+  })
+  await h.tick(500)
+  assert.equal(h.name("provider/a"), "A ↻")
+  await h.emit("session.execution.failed", { sessionID: "s1", error: { kind: "provider_error" } })
+  await h.tick(500)
+  assert.equal(h.name("provider/a"), "A ✕")
+})
+
 test("v2 session.model.selected moves a running badge instantly without listing sessions", async (t) => {
   const h = await setup(t)
   await h.emit("session.execution.started", { sessionID: "s1" })

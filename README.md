@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![OpenCode](https://img.shields.io/badge/OpenCode-plugin-7c3aed.svg)](https://opencode.ai)
-[![Version](https://img.shields.io/badge/version-0.4.3-green.svg)](https://github.com/engrtarun/opencode-model-badges/releases)
+[![Version](https://img.shields.io/badge/version-0.4.4-green.svg)](https://github.com/engrtarun/opencode-model-badges/releases)
 [![tests](https://github.com/engrtarun/opencode-model-badges/actions/workflows/test.yml/badge.svg)](https://github.com/engrtarun/opencode-model-badges/actions/workflows/test.yml)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.6-green.svg)](package.json)
 [![Zero-child-process](https://img.shields.io/badge/child%20processes-0-brightgreen.svg)](#-how-it-works)
@@ -33,7 +33,7 @@ Do you run 5-7 chat sessions at once and lose track of which model is busy and w
 | `●` | Exactly **1** chat session is running |
 | `● [N]` | **N (2+)** sessions are running on the same model in parallel |
 | `↻` | **Rate-limited** — the model hit a rate/usage limit; OpenCode is retrying with back-off |
-| `✕` | **Limit exhausted** — the retry policy gave up; shown until the provider's reset epoch (default 10 min, capped 24 h) |
+| `✕` | **Rate/usage limit exhausted** — the retry policy gave up on a limit; shown until the provider's reset epoch (default 10 min, capped 24 h). Plain transport failures (502 storms, timeouts) never earn `✕` [#10] |
 
 > **Only currently running sessions are counted — never history.** A model earns a badge only while it is actively working.
 
@@ -121,7 +121,7 @@ Threshold lives at the top of `autobg.ts` (`THRESHOLD_MS = 60_000`, `WARN_BEFORE
   1. **Authoritative** — `session.status` events (`busy` / `retry` / `idle`).
   2. **Activity TTL** — generation-stream events (`.delta`, `session.step.*`, `session.tool.*`, `usage.updated`) keep a badge alive for 15 seconds.
   3. **Tool-call tracking** — during a long build/script the model goes silent; open tool calls are tracked by `toolCallID` so the badge survives (max 10-minute safety cap).
-  4. **Rate-limit tracking** — a session whose status is `retry` is blocked, not running: the model earns `↻`. If the retry policy gives up (status drops to idle), the model keeps `✕` until the provider-provided `next` epoch (`retry-after`), capped at 24 h, default window 10 min.
+  4. **Rate-limit tracking** — a session whose status is `retry` is blocked, not running: the model earns `↻`. If the retry policy gives up (status drops to idle), the model keeps `✕` until the provider-provided `next` epoch (`retry-after`), capped at 24 h, default window 10 min. The back-off **reason** is honoured (#10): the event's own `message`/`error` text decides — explicit rate-limit vocabulary (or typed `provider.free-limit` classes) earns `✕`, transport wording (502/gateway/timeout/network) earns nothing at all, and unrecognised wording stays permissive (it can still mark `✕`).
 - **Accuracy safety:** stale "idle" and "retry" marks are overridden by fresh activity, deleted sessions have all state cleaned, and a 10-minute safety refresh catches missed events.
 - **Model switches:** when an event carries the selected model, its session's badge moves immediately without listing sessions again. Incomplete model events refresh the paginated map after the normal 0.5-second debounce; bulk session updates keep their 8-second debounce.
 - **OpenCode v1 + v2 channels:** the same badge contract covers both event vocabularies — v1's `session.status` / `session.idle`, and v2's `session.model.selected` / `session.retry.scheduled` / `session.execution.*` (a model switch moves its badge instantly on both). Durable v2 frames replayed after a reconnect may fix bookkeeping but never paint liveness — no ghost ● on sessions that idled before the connection.

@@ -42,7 +42,7 @@
 // License: MIT
 
 import { Plugin } from "@opencode/plugin"
-import { countRunningModels, pickBadge, stripBadge } from "./lib.ts"
+import { classifyRetry, countRunningModels, pickBadge, stripBadge } from "./lib.ts"
 import { createAutoBg } from "./autobg.ts"
 
 const MAP_REFRESH_DEBOUNCE_MS = 8_000
@@ -491,11 +491,15 @@ export default Plugin.define({
         if (type === "session.status" || type === "session.idle") {
           let stType: string | undefined
           let next: number | undefined
+          let stMessage: string | undefined
           if (type === "session.status") {
-            const st = data.status as { type?: string; next?: unknown } | string | undefined
+            const st = data.status as { type?: string; next?: unknown; message?: string } | string | undefined
             stType = typeof st === "string" ? st : st?.type
             if (typeof st === "object" && st && typeof (st as { next?: unknown }).next === "number") {
               next = (st as { next?: number }).next
+            }
+            if (typeof st === "object" && st && typeof (st as { message?: unknown }).message === "string") {
+              stMessage = (st as { message?: string }).message
             }
           } else {
             stType = "idle"
@@ -508,14 +512,21 @@ export default Plugin.define({
             // Rate-limited: OpenCode is backing off. NOT running — ↻ territory.
             statusRetry.add(sid)
             statusBusy.delete(sid)
-            // Hold the exhausted mark until the provider's own `next` epoch
-            // (usage-limit resets can be hours away), capped at 24h; fall back
-            // to a fixed window when the event carries no usable `next`.
-            const now = Date.now()
-            const until = next && next > now && next <= now + RETRY_MARK_MAX_MS
-              ? Math.max(retryMark.get(sid) ?? 0, next)
-              : Math.max(retryMark.get(sid) ?? 0, now + RETRY_MARK_DEFAULT_MS)
-            retryMark.set(sid, until)
+            // ✕ accuracy (#10): classify the event's own reason text. Only a
+            // rate/USAGE limit (or unknown wording — permissive) may hold the
+            // exhausted mark; transport back-offs (502/timeout storms) never do.
+            const reason = classifyRetry(stMessage)
+            if (reason !== "transport") {
+              // Hold the exhausted mark until the provider's own `next` epoch
+              // (usage-limit resets can be hours away), capped at 24h; fall back
+              // to a fixed window when the event carries no usable `next`.
+              const now = Date.now()
+              const until = next && next > now && next <= now + RETRY_MARK_MAX_MS
+                ? Math.max(retryMark.get(sid) ?? 0, next)
+                : Math.max(retryMark.get(sid) ?? 0, now + RETRY_MARK_DEFAULT_MS)
+              retryMark.set(sid, until)
+            }
+            dbg(`statusEv ${type} sid=${sid.slice(0, 12)} st=${stType} reason=${reason}`)
           } else {
             // idle: the retry policy gave up → ✕ mark (already set) survives
             statusBusy.delete(sid)
@@ -528,19 +539,30 @@ export default Plugin.define({
           return
         }
         if (V2_RETRY_RE.test(type)) {
-          // v2 rate-limit back-off: the same ↻ semantics the v1 retry status
-          // carried. `at` is the provider's own resume epoch — the seat of
-          // the ✕ window if this back-off chain dies later.
-          const now = Date.now()
-          const at = typeof data.at === "number" ? data.at : Number.NaN
-          const until = Number.isFinite(at) && at > now && at <= now + RETRY_MARK_MAX_MS
-            ? Math.max(retryMark.get(sid) ?? 0, at)
-            : Math.max(retryMark.get(sid) ?? 0, now + RETRY_MARK_DEFAULT_MS)
-          retryMark.set(sid, until)
+          // v2 back-off: the same ↻ semantics the v1 retry status carried. The
+          // `error` may be a plain string or a typed { name, message }
+          // (e.g. provider.free-limit). ✕ accuracy (#10): only a rate/USAGE
+          // limit — or unknown wording, permissive — may hold the mark.
+          const err = data.error as string | { name?: unknown; message?: unknown } | undefined
+          const errText =
+            typeof err === "string"
+              ? err
+              : Object.values(err ?? {}).filter((x) => typeof x === "string").join(" ")
+          const reason = classifyRetry(errText.trim() || undefined)
+          if (reason !== "transport") {
+            // `at` is the provider's own resume epoch — the seat of the ✕
+            // window if this back-off chain dies later.
+            const now = Date.now()
+            const at = typeof data.at === "number" ? data.at : Number.NaN
+            const until = Number.isFinite(at) && at > now && at <= now + RETRY_MARK_MAX_MS
+              ? Math.max(retryMark.get(sid) ?? 0, at)
+              : Math.max(retryMark.get(sid) ?? 0, now + RETRY_MARK_DEFAULT_MS)
+            retryMark.set(sid, until)
+          }
           statusKnown.add(sid)
           statusRetry.add(sid)
           statusBusy.delete(sid)
-          dbg(`v2 retry sid=${sid} until=${until}`)
+          dbg(`v2 retry sid=${sid.slice(0, 12)} reason=${reason}`)
           recomputeRunning()
           schedule(STATUS_DEBOUNCE_MS)
           return

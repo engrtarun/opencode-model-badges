@@ -4,7 +4,7 @@
 // semantics.
 import test from "node:test"
 import assert from "node:assert/strict"
-import { countRunningModels, pickBadge, stripBadge } from "../lib.ts"
+import { classifyRetry, countRunningModels, pickBadge, stripBadge } from "../lib.ts"
 
 const NOW = 100_000
 
@@ -149,4 +149,30 @@ test("exhausted is suppressed while the model is running or retrying", () => {
     retryMark: new Map([["s1", NOW + 100]]),
   })
   assert.deepEqual([...countRunningModels(retrying).exhausted], [])
+})
+
+// ---- ✕ accuracy (#10): only rate/USAGE limits may exhaust a model ----------
+
+// Matches against the event's own reason text. Rate-limit vocabulary first,
+// transport vocabulary second, permissive fallback for anything unrecognised.
+test("classifyRetry: rate-limit wording matches the vocabulary (#10)", () => {
+  assert.equal(classifyRetry("rate limit exceeded, retrying in 30s"), "rate-limit")
+  assert.equal(classifyRetry("HTTP 429 too many requests"), "rate-limit")
+  assert.equal(classifyRetry("FreeUsageLimitError: usage limit reached"), "rate-limit")
+  assert.equal(classifyRetry("provider.free-limit quota exceeded"), "rate-limit")
+  assert.equal(classifyRetry("daily quota exhausted for this key"), "rate-limit")
+})
+
+test("classifyRetry: transport wording can never mean rate limit (#10)", () => {
+  assert.equal(classifyRetry("Bad Gateway (502)"), "transport")
+  assert.equal(classifyRetry("Request failed after 3 attempts: gateway timeout"), "transport")
+  assert.equal(classifyRetry("fetch failed: ECONNREFUSED"), "transport")
+  assert.equal(classifyRetry("GET https://api.example.com — socket hang up"), "transport")
+  assert.equal(classifyRetry("internal server error (500) from upstream"), "transport")
+})
+
+test("classifyRetry: unknown wording stays permissive — today's behaviour (#10)", () => {
+  assert.equal(classifyRetry(undefined), "unknown")
+  assert.equal(classifyRetry(""), "unknown")
+  assert.equal(classifyRetry("provider refused the attempt"), "unknown")
 })
