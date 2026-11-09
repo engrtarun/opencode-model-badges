@@ -78,13 +78,13 @@
     },
     {
       "repo": "owjs3901/opencode-auth-load-balancer",
-      "sha": "434b263a2d",
+      "sha": "212eb33a20",
       "adopted": [
         "(deferred) weighted account balancing",
         "(deferred) proactive pre-limit switching"
       ],
-      "lastSeen": "434b263a2d",
-      "lastSeenDate": "2026-10-20T13:40:13Z"
+      "lastSeen": "212eb33a20",
+      "lastSeenDate": "2026-11-09T04:39:08Z"
     },
     {
       "repo": "Gooseware/opencode-antigravity-autopilot",
