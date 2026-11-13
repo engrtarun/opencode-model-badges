@@ -116,13 +116,13 @@
     },
     {
       "repo": "NoeFabris/opencode-antigravity-auth",
-      "sha": "05e600ad6c",
+      "sha": "821f824440",
       "adopted": [
         "not applicable — oauth auth surface",
         "reference for free-tier model ids"
       ],
-      "lastSeen": "05e600ad6c",
-      "lastSeenDate": "2026-10-27T17:24:50Z"
+      "lastSeen": "821f824440",
+      "lastSeenDate": "2026-11-12T14:35:30Z"
     }
   ]
 }
